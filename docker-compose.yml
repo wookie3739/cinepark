@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: cinepark-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cinepark
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5400:5432"
+    volumes:
+      - cinepark-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cinepark"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: cinepark-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/cinepark
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JPA_DDL_AUTO: update
+    ports:
+      - "8000:8000"
+
+volumes:
+  cinepark-postgres-data:

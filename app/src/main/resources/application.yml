@@ -1,0 +1,19 @@
+spring:
+  config:
+    import: optional:classpath:application-private.yml
+  application:
+    name: cinepark
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO}
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+server:
+  port: 8000
