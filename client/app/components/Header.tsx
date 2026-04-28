@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useCart } from "../../context/CartContext";
+import BrandUsageModal from "./BrandUsageModal";
 
 export default function Header() {
+  const { cartItemCount } = useCart();
   const [open, setOpen] = useState(false);
+  const [brandModalOpen, setBrandModalOpen] = useState(false);
 
   const closeMenu = () => setOpen(false);
 
@@ -48,12 +52,12 @@ export default function Header() {
               <Link href="/signup">회원가입</Link>
             </li>
             <li>
-              <a href="https://cinepark.kr/" target="_blank" rel="noreferrer">
-                예매하러 가기
-              </a>
+              <Link href="/mypage">마이페이지</Link>
             </li>
             <li>
-              <Link href="/mypage">마이페이지</Link>
+              <Link href="/cart" className="header-cart-link">
+                장바구니{cartItemCount > 0 ? <span className="cart-count">{cartItemCount}</span> : null}
+              </Link>
             </li>
           </ul>
         </div>
@@ -63,26 +67,44 @@ export default function Header() {
         <div className="container header-gnb-inner">
           <ul className="gnb-menu">
             <li>
-              <Link href="/">토탈쿠폰 소개</Link>
+              <Link href="/intro">토탈쿠폰 소개</Link>
             </li>
             <li>
-              <Link href="/">상품찾기</Link>
+              <Link href="/coupons/total-1">상품찾기</Link>
             </li>
             <li>
-              <Link href="/">이용안내</Link>
+              <Link href="/service">이용안내</Link>
             </li>
             <li>
               <Link href="/mypage">MY주문관리</Link>
             </li>
             <li>
-              <Link href="/">고객센터</Link>
+              <Link href="/support">고객센터</Link>
+            </li>
+            <li>
+              <a
+                href="https://totalseller.co.kr/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                토탈셀러
+              </a>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="gnb-inline-btn"
+                onClick={() => setBrandModalOpen(true)}
+              >
+                사용하러 가기
+              </button>
             </li>
           </ul>
 
           <div className="hot-keyword">
             <span className="hot-keyword-title">HOT</span>
             <a href="#hot-deal">#토탈쿠폰</a>
-            <a href="#hot-deal">#영화예매</a>
+            <a href="#hot-deal">#쿠폰사용</a>
             <a href="#hot-deal">#할인이벤트</a>
             <a href="#hot-deal">#시네파크</a>
           </div>
@@ -98,17 +120,17 @@ export default function Header() {
         <p className="mobile-drawer-section">메뉴</p>
         <ul className="mobile-drawer-menu">
           <li>
-            <Link href="/" onClick={closeMenu}>
+            <Link href="/intro" onClick={closeMenu}>
               토탈쿠폰 소개
             </Link>
           </li>
           <li>
-            <Link href="/" onClick={closeMenu}>
+            <Link href="/coupons/total-1" onClick={closeMenu}>
               상품찾기
             </Link>
           </li>
           <li>
-            <Link href="/" onClick={closeMenu}>
+            <Link href="/service" onClick={closeMenu}>
               이용안내
             </Link>
           </li>
@@ -118,9 +140,26 @@ export default function Header() {
             </Link>
           </li>
           <li>
-            <Link href="/" onClick={closeMenu}>
+            <Link href="/support" onClick={closeMenu}>
               고객센터
             </Link>
+          </li>
+          <li>
+            <a href="https://totalseller.co.kr/" target="_blank" rel="noreferrer" onClick={closeMenu}>
+              토탈셀러
+            </a>
+          </li>
+          <li>
+            <button
+              type="button"
+              className="mobile-drawer-linklike"
+              onClick={() => {
+                setBrandModalOpen(true);
+                closeMenu();
+              }}
+            >
+              사용하러 가기
+            </button>
           </li>
         </ul>
 
@@ -142,14 +181,16 @@ export default function Header() {
             </Link>
           </li>
           <li>
-            <a href="https://cinepark.kr/" target="_blank" rel="noreferrer">
-              예매하러 가기
-            </a>
+            <Link href="/cart" onClick={closeMenu}>
+              장바구니{cartItemCount > 0 ? ` (${cartItemCount})` : ""}
+            </Link>
           </li>
         </ul>
       </div>
 
       {open && <div className="mobile-drawer-backdrop" onClick={closeMenu} aria-hidden="true" />}
+
+      <BrandUsageModal open={brandModalOpen} onClose={() => setBrandModalOpen(false)} />
     </header>
   );
 }

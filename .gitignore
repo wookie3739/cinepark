@@ -12,3 +12,4 @@ client/out
 # Private config
 app/src/main/resources/application-private.yml
 app/.env
+.vercel
