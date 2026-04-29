@@ -29,7 +29,7 @@ export default function TotacouponIntroPage() {
           </p>
 
           <div className="static-cta-row">
-            <Link href="/coupons/total-1" className="button">
+            <Link href="/" className="button">
               토탈쿠폰 구매하기
             </Link>
             <Link href="/service" className="button secondary">

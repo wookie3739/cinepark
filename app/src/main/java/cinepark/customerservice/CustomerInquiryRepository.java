@@ -9,4 +9,6 @@ public interface CustomerInquiryRepository extends JpaRepository<CustomerInquiry
     Page<CustomerInquiry> findByUser_IdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
     Page<CustomerInquiry> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    long countByStatus(InquiryStatus status);
 }

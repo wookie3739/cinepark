@@ -1,5 +1,6 @@
 package cinepark.config;
 
+import cinepark.common.BusinessException;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -12,12 +13,12 @@ public final class SecurityUtils {
     public static Long requireUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
-            throw new IllegalStateException("인증되지 않은 요청입니다.");
+            throw BusinessException.unauthorized("로그인이 필요합니다.");
         }
         Object p = auth.getPrincipal();
         if (p instanceof Long id) {
             return id;
         }
-        throw new IllegalStateException("사용자 정보를 확인할 수 없습니다.");
+        throw BusinessException.unauthorized("사용자 정보를 확인할 수 없습니다.");
     }
 }

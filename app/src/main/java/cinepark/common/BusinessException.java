@@ -9,6 +9,10 @@ public class BusinessException extends RuntimeException {
     private final HttpStatus status;
     private final String errorCode;
 
+    public static BusinessException unauthorized(String message) {
+        return new BusinessException(HttpStatus.UNAUTHORIZED, message, "UNAUTHORIZED");
+    }
+
     private BusinessException(HttpStatus status, String message, String errorCode) {
         super(message);
         this.status = status;

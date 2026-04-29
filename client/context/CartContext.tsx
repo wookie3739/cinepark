@@ -6,124 +6,326 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { getCouponProduct } from "../lib/coupon-products";
+import { useAuth } from "./AuthContext";
+import * as cartApi from "../lib/api/cart";
+import { fetchCouponProductSegment, fetchCouponProductsBatch } from "../lib/api/catalog";
+import type { CartView, CouponProductDetail } from "../types/catalog";
+
+const STORAGE_CART_V1 = "cinepark_cart_v1";
+const STORAGE_CART_V2 = "cinepark_cart_v2";
+const STORAGE_WISH = "cinepark_wishlist_v1";
 
 export type CartLine = {
-  productId: string;
+  productCode: string;
   quantity: number;
 };
 
 type CartApi = {
-  cart: CartLine[];
+  hydrated: boolean;
+  guestLines: CartLine[];
+  serverCart: CartView | null;
+  guestProducts: Record<string, CouponProductDetail | undefined>;
   wishlist: string[];
-  addToCart: (productId: string, quantity: number) => void;
-  setLineQuantity: (productId: string, quantity: number) => void;
-  removeFromCart: (productId: string) => void;
-  addToWishlist: (productId: string) => boolean;
-  removeFromWishlist: (productId: string) => void;
+  addToCart: (productCode: string, quantity: number) => Promise<void>;
+  setLineQuantity: (productCode: string, quantity: number) => Promise<void>;
+  removeFromCart: (productCode: string) => Promise<void>;
+  addToWishlist: (productCode: string) => boolean;
+  removeFromWishlist: (productCode: string) => void;
   cartItemCount: number;
-  isInWishlist: (productId: string) => boolean;
+  isInWishlist: (productCode: string) => boolean;
+  cart: CartLine[];
 };
 
 const CartContext = createContext<CartApi | null>(null);
 
-const STORAGE_CART = "cinepark_cart_v1";
-const STORAGE_WISH = "cinepark_wishlist_v1";
+function mergeDupes(lines: CartLine[]): CartLine[] {
+  const m = new Map<string, number>();
+  for (const l of lines) {
+    m.set(l.productCode, Math.min(99, (m.get(l.productCode) ?? 0) + l.quantity));
+  }
+  return [...m.entries()].map(([productCode, quantity]) => ({ productCode, quantity }));
+}
+
+async function migrateLinesToProductCodes(lines: CartLine[]): Promise<CartLine[]> {
+  const out: CartLine[] = [];
+  for (const l of lines) {
+    if (/^\d{12}$/.test(l.productCode)) {
+      out.push(l);
+      continue;
+    }
+    try {
+      const d = await fetchCouponProductSegment(l.productCode);
+      out.push({ productCode: d.productCode, quantity: l.quantity });
+    } catch {
+      /* drop invalid */
+    }
+  }
+  return mergeDupes(out);
+}
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [wishlist, setWishlist] = useState<string[]>([]);
+  const { accessToken, isReady } = useAuth();
   const [hydrated, setHydrated] = useState(false);
+  const [guestLines, setGuestLines] = useState<CartLine[]>([]);
+  const [serverCart, setServerCart] = useState<CartView | null>(null);
+  const [guestProducts, setGuestProducts] = useState<Record<string, CouponProductDetail | undefined>>({});
+  const [wishlist, setWishlist] = useState<string[]>([]);
+  const loginSyncRef = useRef(false);
+  const guestLinesRef = useRef(guestLines);
+  guestLinesRef.current = guestLines;
 
   useEffect(() => {
     try {
-      const c = localStorage.getItem(STORAGE_CART);
       const w = localStorage.getItem(STORAGE_WISH);
-      if (c) setCart(JSON.parse(c));
-      if (w) setWishlist(JSON.parse(w));
+      if (w) setWishlist(JSON.parse(w) as string[]);
     } catch {
-      /* ignore corrupt storage */
+      /* ignore */
     }
-    setHydrated(true);
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem(STORAGE_CART, JSON.stringify(cart));
-  }, [cart, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem(STORAGE_WISH, JSON.stringify(wishlist));
+    try {
+      localStorage.setItem(STORAGE_WISH, JSON.stringify(wishlist));
+    } catch {
+      /* ignore */
+    }
   }, [wishlist, hydrated]);
 
-  const addToCart = useCallback((productId: string, quantity: number) => {
-    const p = getCouponProduct(productId);
-    if (!p || quantity < 1) return;
-    setCart((prev) => {
-      const idx = prev.findIndex((l) => l.productId === productId);
-      if (idx === -1) return [...prev, { productId, quantity }];
-      const next = [...prev];
-      next[idx] = {
-        productId,
-        quantity: Math.min(99, next[idx].quantity + quantity),
-      };
-      return next;
-    });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rawV2 = localStorage.getItem(STORAGE_CART_V2);
+        if (rawV2) {
+          const parsed = JSON.parse(rawV2) as CartLine[];
+          if (Array.isArray(parsed)) {
+            const migrated = await migrateLinesToProductCodes(parsed);
+            if (!cancelled) {
+              setGuestLines(migrated);
+              localStorage.setItem(STORAGE_CART_V2, JSON.stringify(migrated));
+            }
+            return;
+          }
+        }
+        const rawV1 = localStorage.getItem(STORAGE_CART_V1);
+        if (rawV1) {
+          const parsed = JSON.parse(rawV1) as { productId: string; quantity: number }[];
+          if (Array.isArray(parsed)) {
+            const asV2: CartLine[] = parsed.map((x) => ({
+              productCode: x.productId,
+              quantity: x.quantity,
+            }));
+            const migrated = await migrateLinesToProductCodes(asV2);
+            if (!cancelled) {
+              setGuestLines(migrated);
+              localStorage.setItem(STORAGE_CART_V2, JSON.stringify(migrated));
+              localStorage.removeItem(STORAGE_CART_V1);
+            }
+            return;
+          }
+        }
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const setLineQuantity = useCallback((productId: string, quantity: number) => {
-    if (quantity < 1) {
-      setCart((prev) => prev.filter((l) => l.productId !== productId));
+  useEffect(() => {
+    if (!hydrated || accessToken) return;
+    try {
+      localStorage.setItem(STORAGE_CART_V2, JSON.stringify(guestLines));
+    } catch {
+      /* ignore */
+    }
+  }, [guestLines, hydrated, accessToken]);
+
+  useEffect(() => {
+    if (!hydrated || accessToken || guestLines.length === 0) {
+      if (!accessToken || guestLines.length === 0) setGuestProducts({});
       return;
     }
-    const q = Math.min(99, quantity);
-    const p = getCouponProduct(productId);
-    if (!p) return;
-    setCart((prev) => {
-      const idx = prev.findIndex((l) => l.productId === productId);
-      if (idx === -1) return [...prev, { productId, quantity: q }];
-      const next = [...prev];
-      next[idx] = { productId, quantity: q };
-      return next;
-    });
-  }, []);
+    let cancelled = false;
+    const codes = guestLines.map((l) => l.productCode);
+    fetchCouponProductsBatch(codes)
+      .then((list) => {
+        if (cancelled) return;
+        const map: Record<string, CouponProductDetail> = {};
+        for (const p of list) {
+          map[p.productCode] = p;
+        }
+        setGuestProducts(map);
+      })
+      .catch(() => {
+        if (!cancelled) setGuestProducts({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [guestLines, hydrated, accessToken]);
 
-  const removeFromCart = useCallback((productId: string) => {
-    setCart((prev) => prev.filter((l) => l.productId !== productId));
-  }, []);
+  useEffect(() => {
+    if (!isReady || !hydrated) return;
 
-  const addToWishlist = useCallback((productId: string) => {
-    if (!getCouponProduct(productId)) return false;
+    if (!accessToken) {
+      setServerCart(null);
+      loginSyncRef.current = false;
+      return;
+    }
+
+    if (loginSyncRef.current) return;
+    loginSyncRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = [...guestLinesRef.current];
+        if (snap.length > 0) {
+          let view = await cartApi.getCart(accessToken);
+          for (const g of snap) {
+            const cur = view.lines.find((x) => x.productCode === g.productCode);
+            const nextQty = Math.min(99, (cur?.quantity ?? 0) + g.quantity);
+            view = await cartApi.putCartItem(accessToken, g.productCode, nextQty);
+          }
+          try {
+            localStorage.removeItem(STORAGE_CART_V2);
+          } catch {
+            /* ignore */
+          }
+          if (!cancelled) {
+            setGuestLines([]);
+            setServerCart(view);
+          }
+        } else {
+          const view = await cartApi.getCart(accessToken);
+          if (!cancelled) setServerCart(view);
+        }
+      } catch {
+        if (!cancelled) setServerCart(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isReady, hydrated, accessToken]);
+
+  const addToCart = useCallback(
+    async (productCode: string, quantity: number) => {
+      if (quantity < 1) return;
+      const trimmed = productCode.trim();
+      if (!accessToken) {
+        setGuestLines((prev) => {
+          const idx = prev.findIndex((l) => l.productCode === trimmed);
+          if (idx === -1) return [...prev, { productCode: trimmed, quantity: Math.min(99, quantity) }];
+          const n = [...prev];
+          n[idx] = {
+            productCode: trimmed,
+            quantity: Math.min(99, n[idx].quantity + quantity),
+          };
+          return n;
+        });
+        return;
+      }
+      const view = await cartApi.getCart(accessToken);
+      const existing = view.lines.find((x) => x.productCode === trimmed);
+      const nextQty = Math.min(99, (existing?.quantity ?? 0) + quantity);
+      const v = await cartApi.putCartItem(accessToken, trimmed, nextQty);
+      setServerCart(v);
+    },
+    [accessToken],
+  );
+
+  const setLineQuantity = useCallback(
+    async (productCode: string, quantity: number) => {
+      const trimmed = productCode.trim();
+      if (quantity < 1) {
+        if (!accessToken) {
+          setGuestLines((prev) => prev.filter((l) => l.productCode !== trimmed));
+          return;
+        }
+        const v = await cartApi.deleteCartItem(accessToken!, trimmed);
+        setServerCart(v);
+        return;
+      }
+      const q = Math.min(99, quantity);
+      if (!accessToken) {
+        setGuestLines((prev) => {
+          const idx = prev.findIndex((l) => l.productCode === trimmed);
+          if (idx === -1) return [...prev, { productCode: trimmed, quantity: q }];
+          const n = [...prev];
+          n[idx] = { productCode: trimmed, quantity: q };
+          return n;
+        });
+        return;
+      }
+      const v = await cartApi.putCartItem(accessToken, trimmed, q);
+      setServerCart(v);
+    },
+    [accessToken],
+  );
+
+  const removeFromCart = useCallback(
+    async (productCode: string) => {
+      const trimmed = productCode.trim();
+      if (!accessToken) {
+        setGuestLines((prev) => prev.filter((l) => l.productCode !== trimmed));
+        return;
+      }
+      const v = await cartApi.deleteCartItem(accessToken, trimmed);
+      setServerCart(v);
+    },
+    [accessToken],
+  );
+
+  const addToWishlist = useCallback((productCode: string) => {
+    const code = productCode.trim();
     let added = false;
     setWishlist((prev) => {
-      if (prev.includes(productId)) return prev;
+      if (prev.includes(code)) return prev;
       added = true;
-      return [...prev, productId];
+      return [...prev, code];
     });
     return added;
   }, []);
 
-  const removeFromWishlist = useCallback((productId: string) => {
-    setWishlist((prev) => prev.filter((id) => id !== productId));
+  const removeFromWishlist = useCallback((productCode: string) => {
+    const code = productCode.trim();
+    setWishlist((prev) => prev.filter((id) => id !== code));
   }, []);
 
-  const cartItemCount = useMemo(
-    () => cart.reduce((sum, line) => sum + line.quantity, 0),
-    [cart],
-  );
+  const cartItemCount = useMemo(() => {
+    if (accessToken && serverCart) {
+      return serverCart.lines.reduce((s, l) => s + l.quantity, 0);
+    }
+    return guestLines.reduce((s, l) => s + l.quantity, 0);
+  }, [accessToken, serverCart, guestLines]);
 
   const isInWishlist = useCallback(
-    (productId: string) => wishlist.includes(productId),
+    (productCode: string) => wishlist.includes(productCode.trim()),
     [wishlist],
   );
 
+  const cart: CartLine[] = useMemo(() => {
+    if (accessToken && serverCart) {
+      return serverCart.lines.map((l) => ({ productCode: l.productCode, quantity: l.quantity }));
+    }
+    return guestLines;
+  }, [accessToken, serverCart, guestLines]);
+
   const value = useMemo(
     () => ({
-      cart,
+      hydrated,
+      guestLines,
+      serverCart,
+      guestProducts,
       wishlist,
       addToCart,
       setLineQuantity,
@@ -132,9 +334,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       removeFromWishlist,
       cartItemCount,
       isInWishlist,
+      cart,
     }),
     [
-      cart,
+      hydrated,
+      guestLines,
+      serverCart,
+      guestProducts,
       wishlist,
       addToCart,
       setLineQuantity,
@@ -143,6 +349,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       removeFromWishlist,
       cartItemCount,
       isInWishlist,
+      cart,
     ],
   );
 

@@ -48,13 +48,15 @@ export async function register(request: RegisterRequest): Promise<ApiResponse<Au
   return body;
 }
 
-export async function refreshAccessToken(refreshToken: string): Promise<ApiResponse<{ accessToken: string }>> {
+export async function refreshAccessToken(
+  refreshToken: string,
+): Promise<ApiResponse<{ accessToken: string; refreshToken?: string }>> {
   const res = await fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refreshToken }),
   });
-  const body = (await parseJsonSafe(res)) as ApiResponse<{ accessToken: string }> | null;
+  const body = (await parseJsonSafe(res)) as ApiResponse<{ accessToken: string; refreshToken?: string }> | null;
   if (!body) {
     return { success: false, message: "응답을 해석할 수 없습니다.", errorCode: "PARSE" };
   }

@@ -3,6 +3,7 @@ package cinepark.jwt;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Optional;
+import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
@@ -38,26 +39,45 @@ public class JwtService {
     }
 
     public String createAccessToken(User user) {
-        return buildToken(user, TYPE_ACCESS, accessExpirationMs);
+        return buildToken(user, TYPE_ACCESS, accessExpirationMs, null);
     }
 
-    public String createRefreshToken(User user) {
-        return buildToken(user, TYPE_REFRESH, refreshExpirationMs);
+    /** 리프레시 JWT에 jti를 넣고, 동일 값을 DB에 저장해 검증·회전에 사용한다. */
+    public IssuedRefreshToken issueRefreshToken(User user) {
+        String jti = UUID.randomUUID().toString();
+        Date now = new Date();
+        Date exp = new Date(now.getTime() + refreshExpirationMs);
+        String compact =
+                Jwts.builder()
+                        .subject(String.valueOf(user.getId()))
+                        .claim("email", user.getEmail())
+                        .claim("name", user.getName())
+                        .claim("role", user.getRole().name())
+                        .claim(CLAIM_TYPE, TYPE_REFRESH)
+                        .id(jti)
+                        .issuedAt(now)
+                        .expiration(exp)
+                        .signWith(signingKey)
+                        .compact();
+        return new IssuedRefreshToken(compact, jti, exp.toInstant());
     }
 
-    private String buildToken(User user, String type, long ttlMs) {
+    private String buildToken(User user, String type, long ttlMs, String jtiOrNull) {
         Date now = new Date();
         Date exp = new Date(now.getTime() + ttlMs);
-        return Jwts.builder()
-                .subject(String.valueOf(user.getId()))
-                .claim("email", user.getEmail())
-                .claim("name", user.getName())
-                .claim("role", user.getRole().name())
-                .claim(CLAIM_TYPE, type)
-                .issuedAt(now)
-                .expiration(exp)
-                .signWith(signingKey)
-                .compact();
+        var b =
+                Jwts.builder()
+                        .subject(String.valueOf(user.getId()))
+                        .claim("email", user.getEmail())
+                        .claim("name", user.getName())
+                        .claim("role", user.getRole().name())
+                        .claim(CLAIM_TYPE, type)
+                        .issuedAt(now)
+                        .expiration(exp);
+        if (jtiOrNull != null && !jtiOrNull.isEmpty()) {
+            b.id(jtiOrNull);
+        }
+        return b.signWith(signingKey).compact();
     }
 
     public boolean isAccessTokenValid(String token) {
@@ -91,6 +111,13 @@ public class JwtService {
                 .map(Claims::getSubject)
                 .map(Long::parseLong)
                 .orElse(null);
+    }
+
+    public Optional<String> getJtiFromRefreshToken(String token) {
+        return parse(token)
+                .filter(c -> TYPE_REFRESH.equals(c.get(CLAIM_TYPE, String.class)))
+                .map(Claims::getId)
+                .filter(id -> id != null && !id.isEmpty());
     }
 
     private Optional<Claims> parse(String token) {

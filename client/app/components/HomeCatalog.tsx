@@ -1,32 +1,80 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { COUPON_CATEGORIES, type CategoryId } from "../../lib/coupon-brands-catalog";
-import { DEFAULT_COUPON_ID } from "../../lib/coupon-products";
+import { fetchCouponCategories, fetchCouponProductPage } from "../../lib/api/catalog";
 import { formatPublishedDate } from "../../lib/format-date";
+import type { CouponCategory, CouponProductSummary } from "../../types/catalog";
 import type { NoticeSummary } from "../../types/customer-service";
-import {
-  movieHotDeal,
-  movieNewProducts,
-  movieRanking,
-  movieWeeklyBest,
-} from "../../lib/home-movie-catalog";
+import { ProductPriceDisplay } from "./ProductPriceDisplay";
+import BrandUsageModal from "./BrandUsageModal";
 
-const couponHref = `/coupons/${DEFAULT_COUPON_ID}`;
+const PLANNED_BY_CODE: Partial<Record<CategoryId, boolean>> = Object.fromEntries(
+  COUPON_CATEGORIES.map((c) => [c.id, c.planned]),
+) as Partial<Record<CategoryId, boolean>>;
 
 type HomeCatalogProps = {
   homeNotices?: NoticeSummary[];
   homeNoticesError?: string | null;
 };
 
-function categoryLabel(cat: (typeof COUPON_CATEGORIES)[number]) {
-  return cat.planned ? `${cat.label} (예정)` : cat.label;
+function plannedLabel(cat: CouponCategory): string {
+  const p = PLANNED_BY_CODE[cat.code as CategoryId];
+  return p ? `${cat.label} (예정)` : cat.label;
 }
 
 export default function HomeCatalog({ homeNotices = [], homeNoticesError = null }: HomeCatalogProps) {
-  const [category, setCategory] = useState<CategoryId>("movie");
-  const isMovieActive = category === "movie";
+  const [usageModalOpen, setUsageModalOpen] = useState(false);
+  const [apiCategories, setApiCategories] = useState<CouponCategory[]>([]);
+  const [category, setCategory] = useState<string>("movie");
+  const [products, setProducts] = useState<CouponProductSummary[]>([]);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let c = false;
+    fetchCouponCategories()
+      .then((list) => {
+        if (!c && list.length > 0) {
+          setApiCategories(list);
+          setCategory((prev) =>
+            list.some((x) => x.code === prev) ? prev : list.sort((a, b) => a.sortOrder - b.sortOrder)[0].code,
+          );
+        }
+      })
+      .catch(() => {
+        if (!c) setApiCategories([]);
+      });
+    return () => {
+      c = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!category) return;
+    let cancelled = false;
+    setLoadErr(null);
+    fetchCouponProductPage(0, 48, category)
+      .then((page) => {
+        if (!cancelled) setProducts(page.content);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setProducts([]);
+          setLoadErr(e instanceof Error ? e.message : "목록 로드 실패");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [category]);
+
+  const categoryTiles = useMemo(() => {
+    return [...apiCategories].sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [apiCategories]);
+
+  const catMeta = apiCategories.find((x) => x.code === category);
+  const isEmptyCategory = products.length === 0;
 
   return (
     <div className="container">
@@ -37,17 +85,17 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
               <div className="slide-item">
                 <span className="slide-tag">CINEPARK COUPON</span>
                 <h1>토탈쿠폰으로 바로 사용</h1>
-                <p>결제 후 쿠폰번호로 제휴 브랜드 채널에서 이용하세요. (씨네파크 연동 목업)</p>
+                <p>결제 후 쿠폰번호로 제휴 브랜드 채널에서 이용하세요.</p>
               </div>
               <div className="slide-item">
                 <span className="slide-tag">PAYMENT</span>
                 <h1>PortOne · TossPayments 결제 지원</h1>
-                <p>주문/결제 상태, 외부주문번호, 결제금액을 화면에서 확인합니다.</p>
+                <p>주문·결제 상태와 결제금액을 화면에서 확인합니다.</p>
               </div>
               <div className="slide-item">
                 <span className="slide-tag">SIMPLE</span>
                 <h1>알림 없이 화면에서 바로 확인</h1>
-                <p>주문완료와 마이페이지에서 쿠폰번호를 즉시 확인할 수 있습니다.</p>
+                <p>주문완료와 마이페이지에서 쿠폰번호를 확인할 수 있습니다.</p>
               </div>
             </div>
           </div>
@@ -75,18 +123,19 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
 
       <section className="category-tiles-section" aria-label="카테고리 선택">
         <div className="category-tiles">
-          {COUPON_CATEGORIES.map((cat) => {
-            const selected = cat.id === category;
+          {categoryTiles.map((cat) => {
+            const selected = cat.code === category;
+            const planned = PLANNED_BY_CODE[cat.code as CategoryId] === true;
             return (
               <button
                 key={cat.id}
                 type="button"
-                className={`category-tile ${selected ? "selected" : ""} ${cat.planned ? "planned" : ""}`}
-                onClick={() => setCategory(cat.id)}
+                className={`category-tile ${selected ? "selected" : ""} ${planned ? "planned" : ""}`}
+                onClick={() => setCategory(cat.code)}
                 aria-pressed={selected}
               >
                 <span className="category-tile-inner">
-                  <span className="category-tile-label">{categoryLabel(cat)}</span>
+                  <span className="category-tile-label">{plannedLabel(cat)}</span>
                 </span>
               </button>
             );
@@ -94,32 +143,39 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
         </div>
       </section>
 
-      {isMovieActive ? (
+      {loadErr ? (
+        <p className="card-inline-msg" role="alert">
+          {loadErr}
+        </p>
+      ) : null}
+
+      {!isEmptyCategory ? (
         <>
           <section className="section" id="hot-deal">
             <div className="section-head">
               <h2>
-                <span className="muted-label">영화관</span>{" "}
+                <span className="muted-label">{catMeta?.label ?? ""}</span>{" "}
                 <span className="eng">Hot Deal</span>
               </h2>
             </div>
             <ul className="product-grid">
-              {movieHotDeal.map((p, idx) => (
-                <li key={idx} className="product-card">
-                  <Link href={couponHref} className="product-card-top">
-                    <div className="product-image">CINE</div>
+              {products.slice(0, 6).map((p) => (
+                <li key={p.productCode} className="product-card">
+                  <Link href={`/coupons/${p.productCode}`} className="product-card-top">
+                    <div className="product-image">
+                      {p.mainImageUrl ? (
+                        <img src={p.mainImageUrl} alt="" className="product-thumb-cover" />
+                      ) : (
+                        "CINE"
+                      )}
+                    </div>
                   </Link>
                   <div className="product-meta">
-                    <Link href={couponHref} className="product-meta-link">
-                      <span className="product-brand">{p.brand}</span>
+                    <Link href={`/coupons/${p.productCode}`} className="product-meta-link">
+                      <span className="product-brand">{p.brandLabel}</span>
                       <p className="product-name">{p.name}</p>
                     </Link>
-                    <p className="price-block">
-                      <span className="sale">{p.sale}</span>
-                      <span className="unit">원</span>
-                      <em className="origin">{p.origin}원</em>
-                    </p>
-                    <p className="product-desc">{p.desc}</p>
+                    <ProductPriceDisplay unitPrice={p.unitPrice} originPrice={p.originPrice} layout="card" />
                   </div>
                 </li>
               ))}
@@ -129,77 +185,28 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
           <section className="section best-section">
             <div className="section-head">
               <h2>
-                영화관 토탈쿠폰 주간 <span className="eng">BEST</span>
+                {catMeta?.label ?? "카테고리"} <span className="eng">BEST</span>
               </h2>
             </div>
             <ul className="product-grid">
-              {movieWeeklyBest.map((p, idx) => (
-                <li key={idx} className="product-card">
-                  <Link href={couponHref} className="product-card-top">
+              {products.map((p, idx) => (
+                <li key={`${p.productCode}-best`} className="product-card">
+                  <Link href={`/coupons/${p.productCode}`} className="product-card-top">
                     <div className="product-image">
-                      <span className="rank-badge">{p.rank}</span>CINE
+                      {idx < 5 ? <span className="rank-badge">{idx + 1}</span> : null}
+                      {p.mainImageUrl ? (
+                        <img src={p.mainImageUrl} alt="" className="product-thumb-cover" />
+                      ) : (
+                        "CINE"
+                      )}
                     </div>
                   </Link>
                   <div className="product-meta">
-                    <Link href={couponHref} className="product-meta-link">
-                      <span className="product-brand">{p.brand}</span>
+                    <Link href={`/coupons/${p.productCode}`} className="product-meta-link">
+                      <span className="product-brand">{p.brandLabel}</span>
                       <p className="product-name">{p.name}</p>
                     </Link>
-                    <p className="price-block">
-                      <span className="sale">{p.sale}</span>
-                      <span className="unit">원</span>
-                      <em className="origin">{p.origin}원</em>
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="section">
-            <div className="section-head">
-              <h2>영화관 토탈쿠폰 신상</h2>
-            </div>
-            <ul className="product-grid grid-3">
-              {movieNewProducts.map((p, idx) => (
-                <li key={idx} className="product-card">
-                  <Link href={couponHref} className="product-card-top">
-                    <div className="product-image">CINE</div>
-                  </Link>
-                  <div className="product-meta">
-                    <Link href={couponHref} className="product-meta-link">
-                      <span className="product-brand">{p.brand}</span>
-                      <p className="product-name">{p.name}</p>
-                    </Link>
-                    <p className="price-block">
-                      <span className="sale">{p.sale}</span>
-                      <span className="unit">원</span>
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="section">
-            <div className="section-head">
-              <h2>이달의 관심상품 순위 (영화관)</h2>
-            </div>
-            <ul className="ranking-list">
-              {movieRanking.map((r) => (
-                <li key={r.rank}>
-                  <strong className="ranking-num">{r.rank}</strong>
-                  <Link href={couponHref} className="ranking-thumb ranking-thumb-link">
-                    CINE
-                  </Link>
-                  <div className="ranking-meta">
-                    <span className="product-brand">CINEPARK</span>
-                    <Link href={couponHref} className="ranking-name-link">
-                      <p className="product-name">{r.name}</p>
-                    </Link>
-                    <p className="price-block">
-                      <span className="sale">{r.price}</span>
-                    </p>
+                    <ProductPriceDisplay unitPrice={p.unitPrice} originPrice={p.originPrice} layout="card" />
                   </div>
                 </li>
               ))}
@@ -209,9 +216,9 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
       ) : (
         <section className="section category-planned-block" aria-live="polite">
           <div className="panel flat planned-category-panel">
-            <h2 className="planned-category-title">{categoryLabel(getCategory(category))}</h2>
-            <p className="planned-category-lead">이 카테고리 상품은 준비 중입니다.</p>
-            <p className="muted">브랜드 제휴 확대 시 순차 오픈 예정 목업입니다. 영화관(씨네파크) 카테고리를 선택해 현재 상품을 확인해 주세요.</p>
+            <h2 className="planned-category-title">{catMeta ? plannedLabel(catMeta) : category}</h2>
+            <p className="planned-category-lead">이 카테고리에 판매 중인 상품이 없습니다.</p>
+            <p className="muted">다른 카테고리를 선택하거나 잠시 후 다시 확인해 주세요.</p>
           </div>
         </section>
       )}
@@ -226,10 +233,13 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
         </article>
         <article className="guide-card">
           <h3>쿠폰 사용 안내</h3>
-          <p>PortOne · TossPayments로 결제 후, 활성 브랜드의 사용 채널에서 이용하세요. (목업에서는 씨네파크만 연결)</p>
-          <a href="https://cinepark.kr/" target="_blank" rel="noreferrer" className="guide-link">
-            사용 채널로 이동 (씨네파크)
-          </a>
+          <p>
+            결제 완료 후 쿠폰번호가 발급되면, 상품에 등록된 제휴 사이트에서 사용하실 수 있습니다. 링크가 등록된 브랜드만
+            아래에서 선택됩니다.
+          </p>
+          <button type="button" className="guide-link" onClick={() => setUsageModalOpen(true)}>
+            사용하러 가기
+          </button>
         </article>
       </section>
 
@@ -268,12 +278,8 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
         <Link href="/inquiry">1:1 문의</Link>
         <Link href="/notice">공지사항</Link>
       </section>
+
+      <BrandUsageModal open={usageModalOpen} onClose={() => setUsageModalOpen(false)} />
     </div>
   );
-}
-
-function getCategory(id: CategoryId) {
-  const c = COUPON_CATEGORIES.find((x) => x.id === id);
-  if (!c) return COUPON_CATEGORIES[0];
-  return c;
 }

@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getCouponProduct } from "../../../lib/coupon-products";
+import { fetchCouponProductsBatch } from "../../../lib/api/catalog";
 import { readCheckoutSession, writeCheckoutSession } from "../../../lib/checkout-session";
+import type { CouponProductDetail } from "../../../types/catalog";
+import { ProductPriceDisplay } from "../../components/ProductPriceDisplay";
 
 type ResolvedLine = {
-  productId: string;
+  productCode: string;
   quantity: number;
   name: string;
   unitPrice: number;
+  originPrice: number;
   subtotal: number;
 };
 
@@ -26,32 +29,55 @@ export default function CheckoutPage() {
       setReady(true);
       return;
     }
-    const resolved: ResolvedLine[] = [];
-    for (const row of raw) {
-      const p = getCouponProduct(row.productId);
-      if (!p || row.quantity < 1) continue;
-      resolved.push({
-        productId: p.id,
-        quantity: row.quantity,
-        name: p.name,
-        unitPrice: p.unitPrice,
-        subtotal: p.unitPrice * row.quantity,
+    const codes = [...new Set(raw.map((r) => r.productCode).filter(Boolean))];
+    let cancelled = false;
+    fetchCouponProductsBatch(codes)
+      .then((products) => {
+        if (cancelled) return;
+        const byCode: Record<string, CouponProductDetail> = {};
+        for (const p of products) {
+          byCode[p.productCode] = p;
+        }
+        const resolved: ResolvedLine[] = [];
+        for (const row of raw) {
+          const p = byCode[row.productCode];
+          if (!p || row.quantity < 1) continue;
+          resolved.push({
+            productCode: row.productCode,
+            quantity: row.quantity,
+            name: p.name,
+            unitPrice: p.unitPrice,
+            originPrice: p.originPrice,
+            subtotal: p.unitPrice * row.quantity,
+          });
+        }
+        setLines(resolved);
+        if (resolved.length > 0) {
+          writeCheckoutSession(
+            resolved.map((r) => ({ productCode: r.productCode, quantity: r.quantity })),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLines([]);
+      })
+      .finally(() => {
+        if (!cancelled) setReady(true);
       });
-    }
-    setLines(resolved);
-    if (resolved.length > 0) {
-      writeCheckoutSession(
-        resolved.map((r) => ({ productId: r.productId, quantity: r.quantity })),
-      );
-    }
-    setReady(true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const total = useMemo(() => lines.reduce((s, l) => s + l.subtotal, 0), [lines]);
 
   const onPay = () => {
     if (lines.length === 0 || total <= 0) return;
-    router.push(`/order/complete?amount=${total}`);
+    const qs = new URLSearchParams();
+    qs.set("amount", String(total));
+    const codes = [...new Set(lines.map((l) => l.productCode).filter(Boolean))];
+    if (codes.length > 0) qs.set("codes", codes.join(","));
+    router.push(`/order/complete?${qs.toString()}`);
   };
 
   if (!ready) {
@@ -75,8 +101,8 @@ export default function CheckoutPage() {
               <Link href="/cart" className="button">
                 장바구니로
               </Link>
-              <Link href="/coupons/total-1" className="button secondary">
-                토탈쿠폰 상세
+              <Link href="/" className="button secondary">
+                쇼핑 계속
               </Link>
             </div>
           </section>
@@ -98,14 +124,17 @@ export default function CheckoutPage() {
           <h2>주문서</h2>
           <ul className="checkout-lines">
             {lines.map((l) => (
-              <li key={l.productId} className="checkout-line">
+              <li key={l.productCode} className="checkout-line">
                 <div>
                   <span className="product-brand">CINEPARK</span>
                   <p className="checkout-line-name">{l.name}</p>
                 </div>
-                <span className="muted">
-                  {l.unitPrice.toLocaleString()}원 × {l.quantity}매
-                </span>
+                <ProductPriceDisplay
+                  layout="checkout"
+                  unitPrice={l.unitPrice}
+                  originPrice={l.originPrice}
+                  quantity={l.quantity}
+                />
                 <strong>{l.subtotal.toLocaleString()}원</strong>
               </li>
             ))}

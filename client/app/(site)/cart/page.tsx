@@ -2,40 +2,88 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
-import { getCouponProduct } from "../../../lib/coupon-products";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../../../context/AuthContext";
+import { fetchCouponProductsBatch } from "../../../lib/api/catalog";
 import { writeCheckoutSession } from "../../../lib/checkout-session";
 import { useCart } from "../../../context/CartContext";
+import type { CouponProductDetail } from "../../../types/catalog";
+import { ProductPriceDisplay } from "../../components/ProductPriceDisplay";
 
 export default function CartPage() {
   const router = useRouter();
-  const { cart, setLineQuantity, removeFromCart, wishlist, removeFromWishlist } = useCart();
+  const { accessToken } = useAuth();
+  const {
+    serverCart,
+    guestLines,
+    guestProducts,
+    setLineQuantity,
+    removeFromCart,
+    wishlist,
+    removeFromWishlist,
+  } = useCart();
+  const [wishMap, setWishMap] = useState<Record<string, CouponProductDetail | undefined>>({});
+
+  useEffect(() => {
+    if (wishlist.length === 0) {
+      setWishMap({});
+      return;
+    }
+    let cancelled = false;
+    void fetchCouponProductsBatch(wishlist).then((list) => {
+      if (cancelled) return;
+      const m: Record<string, CouponProductDetail> = {};
+      for (const p of list) {
+        m[p.productCode] = p;
+      }
+      setWishMap(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [wishlist]);
 
   const lines = useMemo(() => {
-    return cart
+    if (accessToken && serverCart) {
+      return serverCart.lines.map((l) => ({
+        productCode: l.productCode,
+        name: l.name,
+        brandLabel: l.brandLabel,
+        unitPrice: l.unitPrice,
+        originPrice: l.originPrice,
+        quantity: l.quantity,
+        subtotal: l.lineTotal,
+      }));
+    }
+    return guestLines
       .map((line) => {
-        const p = getCouponProduct(line.productId);
-        if (!p) return null;
-        return { line, product: p, subtotal: p.unitPrice * line.quantity };
+        const d = guestProducts[line.productCode];
+        if (!d) return null;
+        return {
+          productCode: line.productCode,
+          name: d.name,
+          brandLabel: d.brandLabel,
+          unitPrice: d.unitPrice,
+          originPrice: d.originPrice,
+          quantity: line.quantity,
+          subtotal: d.unitPrice * line.quantity,
+        };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [cart]);
+  }, [accessToken, serverCart, guestLines, guestProducts]);
 
   const total = useMemo(() => lines.reduce((s, x) => s + x.subtotal, 0), [lines]);
 
   const wishItems = useMemo(() => {
     return wishlist
-      .map((id) => {
-        const p = getCouponProduct(id);
-        return p ? p : null;
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [wishlist]);
+      .map((code) => wishMap[code])
+      .filter((x): x is CouponProductDetail => !!x);
+  }, [wishlist, wishMap]);
 
   const onCheckout = () => {
     if (lines.length === 0) return;
     writeCheckoutSession(
-      lines.map((x) => ({ productId: x.product.id, quantity: x.line.quantity })),
+      lines.map((x) => ({ productCode: x.productCode, quantity: x.quantity })),
     );
     router.push("/checkout");
   };
@@ -56,31 +104,43 @@ export default function CartPage() {
               <p className="muted">담긴 상품이 없습니다. 토탈쿠폰 상품을 담아 주세요.</p>
             ) : (
               <ul className="cart-lines">
-                {lines.map(({ line, product, subtotal }) => (
-                  <li key={line.productId} className="cart-line">
-                    <Link href={`/coupons/${product.id}`} className="cart-line-thumb product-image">
+                {lines.map((row) => (
+                  <li key={row.productCode} className="cart-line">
+                    <Link href={`/coupons/${row.productCode}`} className="cart-line-thumb product-image">
                       CINE
                     </Link>
                     <div className="cart-line-meta">
-                      <span className="product-brand">{product.brand}</span>
-                      <Link href={`/coupons/${product.id}`} className="cart-line-name">
-                        {product.name}
+                      <span className="product-brand">{row.brandLabel}</span>
+                      <Link href={`/coupons/${row.productCode}`} className="cart-line-name">
+                        {row.name}
                       </Link>
-                      <p className="cart-line-unit">{product.unitPrice.toLocaleString()}원 / 1매</p>
+                      <div className="cart-line-unit">
+                        <ProductPriceDisplay
+                          unitPrice={row.unitPrice}
+                          originPrice={row.originPrice}
+                          layout="compact"
+                          suffix={
+                            <span className="product-price-per-unit">
+                              {" "}
+                              / 1매
+                            </span>
+                          }
+                        />
+                      </div>
                     </div>
                     <div className="cart-line-qty">
                       <div className="qty-stepper small">
                         <button
                           type="button"
-                          onClick={() => setLineQuantity(line.productId, line.quantity - 1)}
+                          onClick={() => void setLineQuantity(row.productCode, row.quantity - 1)}
                           aria-label="수량 줄이기"
                         >
                           −
                         </button>
-                        <span className="qty-readonly">{line.quantity}</span>
+                        <span className="qty-readonly">{row.quantity}</span>
                         <button
                           type="button"
-                          onClick={() => setLineQuantity(line.productId, line.quantity + 1)}
+                          onClick={() => void setLineQuantity(row.productCode, row.quantity + 1)}
                           aria-label="수량 늘리기"
                         >
                           +
@@ -88,11 +148,11 @@ export default function CartPage() {
                       </div>
                     </div>
                     <div className="cart-line-sum">
-                      <strong>{subtotal.toLocaleString()}원</strong>
+                      <strong>{row.subtotal.toLocaleString()}원</strong>
                       <button
                         type="button"
                         className="link-button"
-                        onClick={() => removeFromCart(line.productId)}
+                        onClick={() => void removeFromCart(row.productCode)}
                       >
                         삭제
                       </button>
@@ -136,9 +196,13 @@ export default function CartPage() {
                 <h2>관심상품</h2>
                 <ul className="wish-aside-list">
                   {wishItems.map((p) => (
-                    <li key={p.id}>
-                      <Link href={`/coupons/${p.id}`}>{p.name}</Link>
-                      <button type="button" className="link-button" onClick={() => removeFromWishlist(p.id)}>
+                    <li key={p.productCode}>
+                      <Link href={`/coupons/${p.productCode}`}>{p.name}</Link>
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => removeFromWishlist(p.productCode)}
+                      >
                         제거
                       </button>
                     </li>

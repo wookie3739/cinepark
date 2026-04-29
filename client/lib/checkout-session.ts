@@ -3,7 +3,7 @@
 export const CHECKOUT_SESSION_KEY = "cinepark_checkout_v1";
 
 export type CheckoutLine = {
-  productId: string;
+  productCode: string;
   quantity: number;
 };
 
@@ -21,9 +21,9 @@ export function readCheckoutSession(): CheckoutLine[] | null {
       (item): item is CheckoutLine =>
         typeof item === "object" &&
         item !== null &&
-        "productId" in item &&
+        "productCode" in item &&
         "quantity" in item &&
-        typeof (item as CheckoutLine).productId === "string" &&
+        typeof (item as CheckoutLine).productCode === "string" &&
         typeof (item as CheckoutLine).quantity === "number",
     );
   } catch {

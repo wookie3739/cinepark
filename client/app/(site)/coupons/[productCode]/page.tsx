@@ -2,19 +2,50 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { getCouponProduct } from "../../../../lib/coupon-products";
+import { useEffect, useState } from "react";
 import { writeCheckoutSession } from "../../../../lib/checkout-session";
+import { fetchCouponProductSegment } from "../../../../lib/api/catalog";
 import { useCart } from "../../../../context/CartContext";
+import type { CouponProductDetail } from "../../../../types/catalog";
+import { ProductPriceDisplay } from "../../../components/ProductPriceDisplay";
 
 export default function CouponDetailPage() {
   const params = useParams();
-  const id = typeof params.id === "string" ? params.id : "";
-  const product = useMemo(() => getCouponProduct(id), [id]);
+  const segment = typeof params.productCode === "string" ? params.productCode : "";
   const router = useRouter();
   const { addToCart, addToWishlist } = useCart();
+  const [product, setProduct] = useState<CouponProductDetail | null>(null);
+  const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
   const [wishMsg, setWishMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchCouponProductSegment(segment)
+      .then((p) => {
+        if (!cancelled) setProduct(p);
+      })
+      .catch(() => {
+        if (!cancelled) setProduct(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [segment]);
+
+  if (loading) {
+    return (
+      <main className="page">
+        <div className="container narrow-page">
+          <p className="muted">불러오는 중입니다.</p>
+        </div>
+      </main>
+    );
+  }
 
   if (!product) {
     return (
@@ -27,7 +58,7 @@ export default function CouponDetailPage() {
           </nav>
           <section className="panel">
             <h2>상품을 찾을 수 없습니다</h2>
-            <p className="muted">요청하신 쿠폰 상품이 없습니다. 목업은 토탈쿠폰 상품만 제공합니다.</p>
+            <p className="muted">요청하신 쿠폰 상품이 없거나 판매 중이 아닙니다.</p>
             <div className="button-row">
               <Link href="/" className="button">
                 홈으로
@@ -42,24 +73,26 @@ export default function CouponDetailPage() {
   const lineTotal = product.unitPrice * qty;
 
   const changeQty = (delta: number) => {
-    setQty((q) => Math.min(99, Math.max(1, q + delta)));
+    setQty((q) => Math.min(Math.min(product.availableStock, 99), Math.max(1, q + delta)));
   };
 
-  const onAddCart = () => {
-    addToCart(product.id, qty);
+  const onAddCart = async () => {
+    await addToCart(product.productCode, qty);
     router.push("/cart");
   };
 
   const onBuyNow = () => {
-    writeCheckoutSession([{ productId: product.id, quantity: qty }]);
+    writeCheckoutSession([{ productCode: product.productCode, quantity: qty }]);
     router.push("/checkout");
   };
 
   const onWish = () => {
-    const ok = addToWishlist(product.id);
+    const ok = addToWishlist(product.productCode);
     setWishMsg(ok ? "관심상품에 담았습니다." : "이미 관심상품에 있습니다.");
     window.setTimeout(() => setWishMsg(null), 2200);
   };
+
+  const maxQty = Math.min(99, product.availableStock);
 
   return (
     <main className="page">
@@ -74,7 +107,13 @@ export default function CouponDetailPage() {
 
         <section className="detail-grid">
           <div className="detail-visual">
-            <div className="product-image detail-thumb">CINE</div>
+            <div className="product-image detail-thumb">
+              {product.mainImageUrl ? (
+                <img src={product.mainImageUrl} alt="" className="detail-thumb-img" width={400} height={400} />
+              ) : (
+                "CINE"
+              )}
+            </div>
             <ul className="detail-bullets">
               {product.bullets.map((t) => (
                 <li key={t}>{t}</li>
@@ -83,17 +122,16 @@ export default function CouponDetailPage() {
           </div>
 
           <div className="detail-info panel flat">
-            <span className="product-brand">{product.brand}</span>
+            <span className="product-brand">{product.brandLabel}</span>
             <h1 className="detail-title">{product.name}</h1>
-            <p className="detail-lead">{product.shortDesc}</p>
 
-            <div className="price-block detail-price-block">
-              <span className="sale">{product.unitPrice.toLocaleString()}</span>
-              <span className="unit">원</span>
-              {product.originPrice !== product.unitPrice ? (
-                <em className="origin">{product.originPrice.toLocaleString()}원</em>
-              ) : null}
-            </div>
+            <p className="muted small-print">재고 {product.availableStock.toLocaleString()}매</p>
+
+            <ProductPriceDisplay
+              unitPrice={product.unitPrice}
+              originPrice={product.originPrice}
+              layout="detail"
+            />
 
             <div className="qty-row">
               <span className="qty-label">수량</span>
@@ -104,12 +142,12 @@ export default function CouponDetailPage() {
                 <input
                   type="number"
                   min={1}
-                  max={99}
+                  max={maxQty}
                   value={qty}
                   onChange={(e) => {
                     const v = Number.parseInt(e.target.value, 10);
                     if (Number.isNaN(v)) return;
-                    setQty(Math.min(99, Math.max(1, v)));
+                    setQty(Math.min(maxQty, Math.max(1, v)));
                   }}
                   aria-label="구매 수량"
                 />
@@ -117,7 +155,7 @@ export default function CouponDetailPage() {
                   +
                 </button>
               </div>
-              <span className="qty-hint">최대 99매까지 (목업)</span>
+              <span className="qty-hint">최대 {maxQty}매까지</span>
             </div>
 
             <div className="detail-total">
@@ -131,21 +169,30 @@ export default function CouponDetailPage() {
               <button type="button" className="button secondary" onClick={onWish}>
                 관심상품 담기
               </button>
-              <button type="button" className="button secondary" onClick={onAddCart}>
+              <button type="button" className="button secondary" onClick={() => void onAddCart()}>
                 장바구니 담기
               </button>
               <button type="button" className="button" onClick={onBuyNow}>
                 바로 구매하기
               </button>
+              {product.usageUrl?.trim() ? (
+                <a
+                  href={product.usageUrl.trim()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="button secondary"
+                >
+                  사용하러 가기 (제휴)
+                </a>
+              ) : null}
             </div>
 
-            <p className="muted small-print">{product.noticeHtml}</p>
+            {product.noticeHtml ? <p className="muted small-print">{product.noticeHtml}</p> : null}
           </div>
         </section>
 
         <section className="panel notice-panel">
           <h2>안내사항</h2>
-          <p>{product.shortDesc}</p>
           <ul className="detail-bullets">
             <li>주문번호·외부주문번호는 결제 연동 후 주문 내역 화면에 표시됩니다.</li>
             <li>카드 할부 무이자 행사는 목업에 포함되지 않습니다.</li>
