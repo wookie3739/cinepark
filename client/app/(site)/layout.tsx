@@ -1,6 +1,7 @@
 import Link from "next/link";
 import React from "react";
 import Header from "../components/Header";
+import ScrollTopButton from "../components/ScrollTopButton";
 import { SiteProviders } from "../components/SiteProviders";
 
 type SiteLayoutProps = {
@@ -12,6 +13,7 @@ export default function SiteLayout({ children }: SiteLayoutProps) {
     <SiteProviders>
       <Header />
       {children}
+      <ScrollTopButton />
       <footer className="site-footer">
         <div className="container footer-inner">
           <div className="footer-links">

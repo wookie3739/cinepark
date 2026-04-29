@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import TermsModal from "../../components/TermsModal";
+import { useAuth } from "../../../context/AuthContext";
 
 type TermsType = "terms" | "privacy" | "marketing";
 
@@ -35,9 +37,15 @@ const initialAgreements: Agreements = {
 };
 
 export default function SignupPage() {
+  const router = useRouter();
+  const { register } = useAuth();
   const [form, setForm] = useState<SignupForm>(initialForm);
   const [agreements, setAgreements] = useState<Agreements>(initialAgreements);
   const [openedTerm, setOpenedTerm] = useState<TermsType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const phoneDigits = useMemo(() => form.phone.replace(/\D/g, ""), [form.phone]);
 
   const handleChange = (key: keyof SignupForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
@@ -64,16 +72,35 @@ export default function SignupPage() {
       form.email.length > 0 &&
       form.password.length >= 8 &&
       form.password === form.passwordConfirm &&
-      form.name.length > 0 &&
-      form.phone.length >= 9 &&
+      form.name.length >= 2 &&
+      phoneDigits.length >= 9 &&
+      phoneDigits.length <= 11 &&
       agreements.terms &&
       agreements.privacy
     );
-  }, [form, agreements]);
+  }, [form.email, form.password, form.passwordConfirm, form.name.length, phoneDigits, agreements]);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canSubmit) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await register({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        phoneNumber: phoneDigits,
+        agreeTerms: true,
+        agreePrivacy: true,
+        agreeMarketing: agreements.marketing,
+      });
+      router.push("/mypage");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "회원가입에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -86,6 +113,11 @@ export default function SignupPage() {
           </header>
 
           <form className="auth-form" onSubmit={handleSubmit}>
+            {error && (
+              <p className="auth-error" role="alert">
+                {error}
+              </p>
+            )}
             <label className="auth-field">
               <span className="auth-label">이메일</span>
               <input
@@ -142,12 +174,11 @@ export default function SignupPage() {
               <span className="auth-label">전화번호</span>
               <input
                 type="tel"
-                placeholder="01012345678"
+                placeholder="01012345678 (하이픈 없이)"
                 value={form.phone}
                 onChange={handleChange("phone")}
                 autoComplete="tel"
                 inputMode="numeric"
-                pattern="[0-9]{9,11}"
                 required
               />
             </label>
@@ -221,8 +252,8 @@ export default function SignupPage() {
               </div>
             </div>
 
-            <button type="submit" className="auth-submit" disabled={!canSubmit}>
-              회원가입
+            <button type="submit" className="auth-submit" disabled={!canSubmit || submitting}>
+              {submitting ? "처리 중..." : "회원가입"}
             </button>
           </form>
 

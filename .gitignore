@@ -11,5 +11,11 @@ client/out
 
 # Private config
 app/src/main/resources/application-private.yml
-app/.env
+# 환경변수 파일 (레포 루트·모듈별 .env 전부 무시)
+.env
+.env.*
+!.env.example
 .vercel
+
+# docs
+docs

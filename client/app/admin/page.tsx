@@ -29,7 +29,7 @@ export default function AdminDashboardPage() {
         <h2 className="admin-card-title">바로 가기</h2>
         <div className="admin-quick-links">
           <Link href="/admin/orders">주문내역</Link>
-          <Link href="/admin/members">회원 정보</Link>
+          <Link href="/admin/members">회원 관리</Link>
           <Link href="/admin/inquiries">1:1 문의</Link>
           <Link href="/admin/notices">공지사항</Link>
           <Link href="/admin/coupons">쿠폰 관리</Link>

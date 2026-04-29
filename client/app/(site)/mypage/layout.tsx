@@ -26,6 +26,14 @@ export default function MyPageLayout({ children }: MyPageLayoutProps) {
               </ul>
             </div>
             <div className="mypage-sidebar-block">
+              <p className="mypage-sidebar-title">고객센터</p>
+              <ul className="mypage-sidebar-list">
+                <li>
+                  <Link href="/mypage/inquiries">내 문의</Link>
+                </li>
+              </ul>
+            </div>
+            <div className="mypage-sidebar-block">
               <p className="mypage-sidebar-title">회원 정보</p>
               <ul className="mypage-sidebar-list">
                 <li>

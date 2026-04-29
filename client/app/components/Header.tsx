@@ -2,15 +2,19 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import { useCart } from "../../context/CartContext";
 import BrandUsageModal from "./BrandUsageModal";
 
 export default function Header() {
   const { cartItemCount } = useCart();
+  const { user, isReady, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [brandModalOpen, setBrandModalOpen] = useState(false);
 
   const closeMenu = () => setOpen(false);
+
+  const authenticated = isReady && !!user;
 
   return (
     <header className="site-header">
@@ -32,28 +36,36 @@ export default function Header() {
             cinepark<span>COUPON</span>
           </Link>
 
-          <div className="header-search" role="search">
-            <input
-              type="text"
-              className="header-search-input"
-              placeholder="토탈쿠폰 검색"
-              aria-label="검색"
-            />
-            <button type="button" className="header-search-button">
-              검색
-            </button>
-          </div>
-
           <ul className="header-util-menu">
-            <li>
-              <Link href="/login">로그인</Link>
-            </li>
-            <li>
-              <Link href="/signup">회원가입</Link>
-            </li>
-            <li>
-              <Link href="/mypage">마이페이지</Link>
-            </li>
+            {authenticated ? (
+              <>
+                <li className="header-user-chip" title={user?.email ?? undefined}>
+                  <span className="header-user-chip-avatar" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" focusable="false">
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                    </svg>
+                  </span>
+                  <strong className="header-user-chip-name">{user?.name ?? ""}</strong>
+                </li>
+                <li>
+                  <button type="button" className="header-text-btn" onClick={() => logout()}>
+                    로그아웃
+                  </button>
+                </li>
+                <li>
+                  <Link href="/mypage">마이페이지</Link>
+                </li>
+              </>
+            ) : (
+              <>
+                <li>
+                  <Link href="/login">로그인</Link>
+                </li>
+                <li>
+                  <Link href="/signup">회원가입</Link>
+                </li>
+              </>
+            )}
             <li>
               <Link href="/cart" className="header-cart-link">
                 장바구니{cartItemCount > 0 ? <span className="cart-count">{cartItemCount}</span> : null}
@@ -70,13 +82,7 @@ export default function Header() {
               <Link href="/intro">토탈쿠폰 소개</Link>
             </li>
             <li>
-              <Link href="/coupons/total-1">상품찾기</Link>
-            </li>
-            <li>
               <Link href="/service">이용안내</Link>
-            </li>
-            <li>
-              <Link href="/mypage">MY주문관리</Link>
             </li>
             <li>
               <Link href="/support">고객센터</Link>
@@ -100,23 +106,10 @@ export default function Header() {
               </button>
             </li>
           </ul>
-
-          <div className="hot-keyword">
-            <span className="hot-keyword-title">HOT</span>
-            <a href="#hot-deal">#토탈쿠폰</a>
-            <a href="#hot-deal">#쿠폰사용</a>
-            <a href="#hot-deal">#할인이벤트</a>
-            <a href="#hot-deal">#시네파크</a>
-          </div>
         </div>
       </nav>
 
       <div className={`mobile-drawer ${open ? "open" : ""}`} role="dialog" aria-hidden={!open}>
-        <div className="mobile-drawer-search">
-          <input type="text" placeholder="토탈쿠폰 검색" aria-label="검색" />
-          <button type="button">검색</button>
-        </div>
-
         <p className="mobile-drawer-section">메뉴</p>
         <ul className="mobile-drawer-menu">
           <li>
@@ -125,18 +118,8 @@ export default function Header() {
             </Link>
           </li>
           <li>
-            <Link href="/coupons/total-1" onClick={closeMenu}>
-              상품찾기
-            </Link>
-          </li>
-          <li>
             <Link href="/service" onClick={closeMenu}>
               이용안내
-            </Link>
-          </li>
-          <li>
-            <Link href="/mypage" onClick={closeMenu}>
-              MY주문관리
             </Link>
           </li>
           <li>
@@ -165,21 +148,58 @@ export default function Header() {
 
         <p className="mobile-drawer-section">계정</p>
         <ul className="mobile-drawer-menu">
-          <li>
-            <Link href="/login" onClick={closeMenu}>
-              로그인
-            </Link>
-          </li>
-          <li>
-            <Link href="/signup" onClick={closeMenu}>
-              회원가입
-            </Link>
-          </li>
-          <li>
-            <Link href="/mypage" onClick={closeMenu}>
-              마이페이지
-            </Link>
-          </li>
+          {authenticated ? (
+            <>
+              <li className="mobile-drawer-user mobile-drawer-user-block">
+                <div className="mobile-drawer-user-row">
+                  <span className="mobile-drawer-user-avatar" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" focusable="false">
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                    </svg>
+                  </span>
+                  <div className="mobile-drawer-user-text">
+                    <span className="mobile-drawer-user-name">{user?.name}</span>
+                    <span className="mobile-drawer-user-email">{user?.email}</span>
+                  </div>
+                </div>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  className="mobile-drawer-linklike"
+                  onClick={() => {
+                    logout();
+                    closeMenu();
+                  }}
+                >
+                  로그아웃
+                </button>
+              </li>
+              <li>
+                <Link href="/mypage" onClick={closeMenu}>
+                  마이페이지
+                </Link>
+              </li>
+            </>
+          ) : (
+            <>
+              <li>
+                <Link href="/login" onClick={closeMenu}>
+                  로그인
+                </Link>
+              </li>
+              <li>
+                <Link href="/signup" onClick={closeMenu}>
+                  회원가입
+                </Link>
+              </li>
+              <li>
+                <Link href="/mypage" onClick={closeMenu}>
+                  마이페이지
+                </Link>
+              </li>
+            </>
+          )}
           <li>
             <Link href="/cart" onClick={closeMenu}>
               장바구니{cartItemCount > 0 ? ` (${cartItemCount})` : ""}

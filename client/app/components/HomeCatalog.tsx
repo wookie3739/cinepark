@@ -4,54 +4,27 @@ import Link from "next/link";
 import { useState } from "react";
 import { COUPON_CATEGORIES, type CategoryId } from "../../lib/coupon-brands-catalog";
 import { DEFAULT_COUPON_ID } from "../../lib/coupon-products";
+import { formatPublishedDate } from "../../lib/format-date";
+import type { NoticeSummary } from "../../types/customer-service";
 import {
   movieHotDeal,
   movieNewProducts,
   movieRanking,
   movieWeeklyBest,
 } from "../../lib/home-movie-catalog";
-import ShopThemeCardActions from "./ShopThemeCardActions";
 
 const couponHref = `/coupons/${DEFAULT_COUPON_ID}`;
 
-const notices = [
-  {
-    id: "1",
-    date: "2026.04.28",
-    text: "[공지] 토탈쿠폰 구매 사이트 OPEN 안내",
-    emph: true,
-  },
-  {
-    id: "2",
-    date: "2026.04.28",
-    text: "[공지] 결제 완료 후 환불 미제공 정책 안내",
-    emph: true,
-  },
-  {
-    id: "3",
-    date: "2026.04.20",
-    text: "[안내] 마이페이지에서 쿠폰번호 확인 방법",
-    emph: false,
-  },
-  {
-    id: "4",
-    date: "2026.04.15",
-    text: "[안내] 시네파크 예매 연동 안내",
-    emph: false,
-  },
-  {
-    id: "5",
-    date: "2026.04.10",
-    text: "[안내] 결제 수단 PortOne / Toss 안내",
-    emph: false,
-  },
-];
+type HomeCatalogProps = {
+  homeNotices?: NoticeSummary[];
+  homeNoticesError?: string | null;
+};
 
 function categoryLabel(cat: (typeof COUPON_CATEGORIES)[number]) {
   return cat.planned ? `${cat.label} (예정)` : cat.label;
 }
 
-export default function HomeCatalog() {
+export default function HomeCatalog({ homeNotices = [], homeNoticesError = null }: HomeCatalogProps) {
   const [category, setCategory] = useState<CategoryId>("movie");
   const isMovieActive = category === "movie";
 
@@ -77,11 +50,6 @@ export default function HomeCatalog() {
                 <p>주문완료와 마이페이지에서 쿠폰번호를 즉시 확인할 수 있습니다.</p>
               </div>
             </div>
-          </div>
-          <div className="main-banner-cta">
-            <Link href={couponHref} className="button">
-              상품 상세 보기
-            </Link>
           </div>
         </article>
 
@@ -213,48 +181,6 @@ export default function HomeCatalog() {
             </ul>
           </section>
 
-          <section className="section theme-section">
-            <div className="section-head">
-              <h2>
-                테마 <span className="eng">SHOP</span>
-              </h2>
-            </div>
-            <div className="theme-tabs">
-              <button type="button" className="theme-tab active">
-                ▶ 토탈쿠폰 기본권 (씨네파크)
-              </button>
-              <button type="button" className="theme-tab" disabled>
-                ▶ 프로모션용 (예정)
-              </button>
-              <button type="button" className="theme-tab" disabled>
-                ▶ 대량 구매 (예정)
-              </button>
-              <button type="button" className="theme-tab" disabled>
-                ▶ 선물용 (예정)
-              </button>
-            </div>
-            <ul className="product-grid grid-3">
-              {movieNewProducts.map((p, idx) => (
-                <li key={idx} className="product-card">
-                  <Link href={couponHref} className="product-card-top">
-                    <div className="product-image">CINE</div>
-                  </Link>
-                  <div className="product-meta">
-                    <Link href={couponHref} className="product-meta-link">
-                      <span className="product-brand">{p.brand}</span>
-                      <p className="product-name">{p.name}</p>
-                    </Link>
-                    <p className="price-block">
-                      <span className="sale">{p.sale}</span>
-                      <span className="unit">원</span>
-                    </p>
-                    <ShopThemeCardActions />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
           <section className="section">
             <div className="section-head">
               <h2>이달의 관심상품 순위 (영화관)</h2>
@@ -311,16 +237,28 @@ export default function HomeCatalog() {
         <div className="section-head">
           <h2>공지사항</h2>
         </div>
-        <ul className="notice-list">
-          {notices.map((n) => (
-            <li key={n.id} className={n.emph ? "emph" : undefined}>
-              <Link href={`/notice/${n.id}`} className="notice-list-row">
-                <span className="notice-text">{n.text}</span>
-                <span className="notice-date">{n.date}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {homeNoticesError ? (
+          <p className="card-inline-msg" role="alert">
+            {homeNoticesError}
+          </p>
+        ) : null}
+        {homeNotices.length === 0 && !homeNoticesError ? (
+          <p className="muted">등록된 공지가 없습니다.</p>
+        ) : null}
+        {homeNotices.length > 0 ? (
+          <ul className="notice-list">
+            {homeNotices.map((n) => (
+              <li key={n.id} className={n.pinned ? "emph" : undefined}>
+                <Link href={`/notice/${n.id}`} className="notice-list-row">
+                  <span className="notice-text">
+                    {n.category ? `${n.category} ${n.title}` : n.title}
+                  </span>
+                  <span className="notice-date">{formatPublishedDate(n.createdAt)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <section className="service-link">

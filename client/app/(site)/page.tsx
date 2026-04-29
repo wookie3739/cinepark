@@ -1,24 +1,28 @@
-import Link from "next/link";
 import HomeCatalog from "../components/HomeCatalog";
 import NoticeModal from "../components/NoticeModal";
+import { fetchNoticePage } from "../../lib/api/customer-service";
+import type { NoticeSummary } from "../../types/customer-service";
 
-export default function HomePage() {
+async function loadHomeNotices() {
+  try {
+    const page = await fetchNoticePage(0, 8);
+    return { notices: page.content ?? [], error: null as string | null };
+  } catch (e) {
+    return {
+      notices: [] as NoticeSummary[],
+      error: e instanceof Error ? e.message : "공지를 불러오지 못했습니다.",
+    };
+  }
+}
+
+export default async function HomePage() {
+  const { notices, error: homeNoticesError } = await loadHomeNotices();
+
   return (
     <main className="page" id="top">
       <NoticeModal />
 
-      <HomeCatalog />
-
-      <aside className="quick-sidebar">
-        <a href="https://cinepark.kr/" target="_blank" rel="noreferrer">
-          사용하기
-        </a>
-        <Link href="/coupons/total-1">상품 보기</Link>
-        <Link href="/cart">장바구니</Link>
-        <Link href="/mypage">내 쿠폰</Link>
-        <Link href="/order/complete">주문 완료</Link>
-        <a href="#top">TOP</a>
-      </aside>
+      <HomeCatalog homeNotices={notices} homeNoticesError={homeNoticesError} />
     </main>
   );
 }
