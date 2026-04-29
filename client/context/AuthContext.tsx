@@ -10,13 +10,15 @@ import {
   type ReactNode,
 } from "react";
 import * as authApi from "../lib/api/auth";
-import type { AuthResponse } from "../types/auth";
+import type { AuthResponse, MyProfile } from "../types/auth";
 
 const STORAGE_ACCESS = "cinepark_access_token";
 const STORAGE_REFRESH = "cinepark_refresh_token";
 const STORAGE_USER = "cinepark_user";
 
-type UserSummary = Pick<AuthResponse, "email" | "name" | "role">;
+type UserSummary = Pick<AuthResponse, "email" | "name" | "role"> & {
+  phoneNumber?: string;
+};
 
 export type RegisterPayload = {
   name: string;
@@ -35,6 +37,8 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
+  /** 프로필 저장 후 헤더·세션 이름 등과 동기화 */
+  syncUserFromProfile: (p: MyProfile) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -68,9 +72,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const persist = useCallback((res: AuthResponse) => {
     sessionStorage.setItem(STORAGE_ACCESS, res.accessToken);
     sessionStorage.setItem(STORAGE_REFRESH, res.refreshToken);
-    const summary: UserSummary = { email: res.email, name: res.name, role: res.role };
+    const summary: UserSummary = {
+      email: res.email,
+      name: res.name,
+      role: res.role,
+      phoneNumber: res.phoneNumber,
+    };
     sessionStorage.setItem(STORAGE_USER, JSON.stringify(summary));
     setAccessToken(res.accessToken);
+    setUser(summary);
+  }, []);
+
+  const syncUserFromProfile = useCallback((p: MyProfile) => {
+    const summary: UserSummary = {
+      email: p.email,
+      name: p.name,
+      role: p.role,
+      phoneNumber: p.phoneNumber,
+    };
+    sessionStorage.setItem(STORAGE_USER, JSON.stringify(summary));
     setUser(summary);
   }, []);
 
@@ -125,8 +145,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       register: registerFn,
       logout,
+      syncUserFromProfile,
     }),
-    [user, accessToken, isReady, login, registerFn, logout],
+    [user, accessToken, isReady, login, registerFn, logout, syncUserFromProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

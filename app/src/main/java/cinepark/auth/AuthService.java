@@ -121,6 +121,7 @@ public class AuthService {
                 .refreshToken(issued.rawToken())
                 .email(user.getEmail())
                 .name(user.getName())
+                .phoneNumber(user.getPhoneNumber())
                 .role(user.getRole().name())
                 .build();
     }

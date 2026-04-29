@@ -1,13 +1,11 @@
-package cinepark.auth.dto;
+package cinepark.user.dto;
 
 import lombok.Builder;
 import lombok.Value;
 
 @Value
 @Builder
-public class AuthResponse {
-    String accessToken;
-    String refreshToken;
+public class MyProfileResponse {
     String email;
     String name;
     String phoneNumber;
