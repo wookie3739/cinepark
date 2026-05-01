@@ -6,18 +6,15 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import * as authApi from "../lib/api/auth";
 import { AUTH_SESSION_ACCESS_KEY } from "../lib/auth-browser-session";
-import type { AuthResponse, MyProfile } from "../types/auth";
+import type { MyProfile } from "../types/auth";
+
 const STORAGE_REFRESH = "cinepark_refresh_token";
 const STORAGE_USER = "cinepark_user";
-
-type UserSummary = Pick<AuthResponse, "email" | "name" | "role"> & {
-  phoneNumber?: string;
-};
 
 export type RegisterPayload = {
   name: string;
@@ -29,112 +26,118 @@ export type RegisterPayload = {
   agreeMarketing: boolean;
 };
 
+type UserSummary = {
+  email: string;
+  name: string;
+  role: string;
+  phoneNumber?: string;
+};
+
 type AuthContextValue = {
   user: UserSummary | null;
   accessToken: string | null;
   isReady: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
-  logout: () => void;
-  /** 프로필 저장 후 헤더·세션 이름 등과 동기화 */
-  syncUserFromProfile: (p: MyProfile) => void;
+  logout: () => Promise<void>;
+  /** 프로필 저장 후 세션·헤더 이름 동기화 */
+  syncUserFromProfile: (p: MyProfile) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function readStorage(): { access: string | null; user: UserSummary | null } {
-  if (typeof window === "undefined") {
-    return { access: null, user: null };
-  }
-  try {
-    const access = sessionStorage.getItem(AUTH_SESSION_ACCESS_KEY);
-    const raw = sessionStorage.getItem(STORAGE_USER);
-    const user = raw ? (JSON.parse(raw) as UserSummary) : null;
-    return { access, user };
-  } catch {
-    return { access: null, user: null };
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [user, setUser] = useState<UserSummary | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const { data: session, status, update } = useSession();
+  const isReady = status !== "loading";
+  const accessToken = session?.accessToken ?? null;
+
+  const user = useMemo((): UserSummary | null => {
+    const u = session?.user;
+    if (!u?.email) return null;
+    return {
+      email: u.email,
+      name: u.name ?? "",
+      role: u.role ?? "USER",
+      phoneNumber: u.phoneNumber,
+    };
+  }, [session?.user]);
 
   useEffect(() => {
-    const { access, user: u } = readStorage();
-    setAccessToken(access);
-    setUser(u);
-    setIsReady(true);
+    if (typeof window === "undefined") return;
+    if (accessToken) {
+      sessionStorage.setItem(AUTH_SESSION_ACCESS_KEY, accessToken);
+      const rt = session?.refreshToken;
+      if (rt) sessionStorage.setItem(STORAGE_REFRESH, rt);
+      if (user) sessionStorage.setItem(STORAGE_USER, JSON.stringify(user));
+    } else if (status === "unauthenticated") {
+      sessionStorage.removeItem(AUTH_SESSION_ACCESS_KEY);
+      sessionStorage.removeItem(STORAGE_REFRESH);
+      sessionStorage.removeItem(STORAGE_USER);
+    }
+  }, [accessToken, session?.refreshToken, user, status]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const res = await signIn("credentials", {
+      email: email.trim(),
+      password,
+      redirect: false,
+    });
+    if (typeof res === "object" && res !== null && "ok" in res && !res.ok) {
+      const msg =
+        res.error === "CredentialsSignin"
+          ? "이메일 또는 비밀번호가 올바르지 않습니다."
+          : (res.error ?? "로그인에 실패했습니다.");
+      throw new Error(msg);
+    }
   }, []);
 
-  const persist = useCallback((res: AuthResponse) => {
-    sessionStorage.setItem(AUTH_SESSION_ACCESS_KEY, res.accessToken);
-    sessionStorage.setItem(STORAGE_REFRESH, res.refreshToken);
-    const summary: UserSummary = {
-      email: res.email,
-      name: res.name,
-      role: res.role,
-      phoneNumber: res.phoneNumber,
-    };
-    sessionStorage.setItem(STORAGE_USER, JSON.stringify(summary));
-    setAccessToken(res.accessToken);
-    setUser(summary);
+  const registerFn = useCallback(async (payload: RegisterPayload) => {
+    const res = await authApi.register({
+      name: payload.name,
+      email: payload.email,
+      password: payload.password,
+      phoneNumber: payload.phoneNumber,
+      agreeTerms: payload.agreeTerms,
+      agreePrivacy: payload.agreePrivacy,
+      agreeMarketing: payload.agreeMarketing,
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.message || "회원가입에 실패했습니다.");
+    }
+    const sign = await signIn("credentials", {
+      email: payload.email.trim(),
+      password: payload.password,
+      redirect: false,
+    });
+    if (typeof sign === "object" && sign !== null && "ok" in sign && !sign.ok) {
+      throw new Error("가입은 완료되었으나 자동 로그인에 실패했습니다. 로그인해 주세요.");
+    }
   }, []);
 
-  const syncUserFromProfile = useCallback((p: MyProfile) => {
-    const summary: UserSummary = {
-      email: p.email,
-      name: p.name,
-      role: p.role,
-      phoneNumber: p.phoneNumber,
-    };
-    sessionStorage.setItem(STORAGE_USER, JSON.stringify(summary));
-    setUser(summary);
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logoutRemote();
+    } catch {
+      /* noop */
+    }
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(AUTH_SESSION_ACCESS_KEY);
+      sessionStorage.removeItem(STORAGE_REFRESH);
+      sessionStorage.removeItem(STORAGE_USER);
+    }
+    await signOut({ redirect: false });
   }, []);
 
-  const clear = useCallback(() => {
-    sessionStorage.removeItem(AUTH_SESSION_ACCESS_KEY);
-    sessionStorage.removeItem(STORAGE_REFRESH);
-    sessionStorage.removeItem(STORAGE_USER);
-    setAccessToken(null);
-    setUser(null);
-  }, []);
-
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const res = await authApi.login({ email, password });
-      if (!res.success || !res.data) {
-        throw new Error(res.message || "로그인에 실패했습니다.");
-      }
-      persist(res.data);
-    },
-    [persist],
-  );
-
-  const registerFn = useCallback(
-    async (payload: RegisterPayload) => {
-      const res = await authApi.register({
-        name: payload.name,
-        email: payload.email,
-        password: payload.password,
-        phoneNumber: payload.phoneNumber,
-        agreeTerms: payload.agreeTerms,
-        agreePrivacy: payload.agreePrivacy,
-        agreeMarketing: payload.agreeMarketing,
+  const syncUserFromProfile = useCallback(
+    async (p: MyProfile) => {
+      await update({
+        name: p.name,
+        phoneNumber: p.phoneNumber,
+        role: p.role,
       });
-      if (!res.success || !res.data) {
-        throw new Error(res.message || "회원가입에 실패했습니다.");
-      }
-      persist(res.data);
     },
-    [persist],
+    [update],
   );
-
-  const logout = useCallback(() => {
-    void authApi.logoutRemote();
-    clear();
-  }, [clear]);
 
   const value = useMemo(
     () => ({

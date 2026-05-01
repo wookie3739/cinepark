@@ -70,7 +70,7 @@ export default function MyPageProfilePage() {
         name: name.trim(),
         phoneNumber: phoneDigits,
       });
-      syncUserFromProfile(updated);
+      await syncUserFromProfile(updated);
       setOkMsg("내 정보가 저장되었습니다.");
     } catch (err: unknown) {
       setFormErr(err instanceof Error ? err.message : "저장에 실패했습니다.");

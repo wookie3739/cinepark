@@ -48,7 +48,7 @@ export default function Header() {
                   <strong className="header-user-chip-name">{user?.name ?? ""}</strong>
                 </li>
                 <li>
-                  <button type="button" className="header-text-btn" onClick={() => logout()}>
+                  <button type="button" className="header-text-btn" onClick={() => void logout()}>
                     로그아웃
                   </button>
                 </li>
@@ -176,7 +176,7 @@ export default function Header() {
                   type="button"
                   className="mobile-drawer-linklike"
                   onClick={() => {
-                    logout();
+                    void logout();
                     closeMenu();
                   }}
                 >

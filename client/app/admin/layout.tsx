@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { AdminProviders } from "./AdminProviders";
-import { AdminRouteGate } from "./AdminRouteGate";
+import { AdminShell } from "./AdminShell";
 
 type Props = {
   children: ReactNode;
@@ -9,7 +9,7 @@ type Props = {
 export default function AdminLayout({ children }: Props) {
   return (
     <AdminProviders>
-      <AdminRouteGate>{children}</AdminRouteGate>
+      <AdminShell>{children}</AdminShell>
     </AdminProviders>
   );
 }
