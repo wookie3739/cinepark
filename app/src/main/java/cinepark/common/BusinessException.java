@@ -31,6 +31,13 @@ public class BusinessException extends RuntimeException {
         return new BusinessException(HttpStatus.NOT_FOUND, message, "NOT_FOUND");
     }
 
+    /**
+     * @param errorCode ApiResponse 규격에 맞는 구체 코드(예: CART_EMPTY).
+     */
+    public static BusinessException of(HttpStatus status, String message, String errorCode) {
+        return new BusinessException(status, message, errorCode);
+    }
+
     public static BusinessException forbidden(String message) {
         return new BusinessException(HttpStatus.FORBIDDEN, message, "FORBIDDEN");
     }

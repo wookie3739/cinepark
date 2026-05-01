@@ -36,7 +36,7 @@ public class SecurityConfig {
                 .exceptionHandling(
                         ex -> ex.authenticationEntryPoint(jsonAuthenticationEntryPoint)
                                 .accessDeniedHandler(jsonAccessDeniedHandler))
-                .authorizeHttpRequests(
+                                .authorizeHttpRequests(
                         auth ->
                                 auth.requestMatchers(HttpMethod.OPTIONS, "/**")
                                         .permitAll()
@@ -55,6 +55,10 @@ public class SecurityConfig {
                                         .requestMatchers(HttpMethod.POST, "/api/products/batch")
                                         .permitAll()
                                         .requestMatchers("/api/cart/**")
+                                        .authenticated()
+                                        .requestMatchers("/api/checkout/payments/**")
+                                        .authenticated()
+                                        .requestMatchers(HttpMethod.GET, "/api/my/orders", "/api/my/orders/**")
                                         .authenticated()
                                         .requestMatchers("/api/admin/**")
                                         .hasRole("ADMIN")
