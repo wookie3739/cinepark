@@ -42,6 +42,9 @@ cinepark:
     secret: ${JWT_SECRET:}
     access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:3600000}
     refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:1209600000}
+  tosspayments:
+    secret-key: ${TOSSPAYMENTS_SECRET_KEY:}
+    prepare-ttl-minutes: 30
 
 management:
   endpoints:

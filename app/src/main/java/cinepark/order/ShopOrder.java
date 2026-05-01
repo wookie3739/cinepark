@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * 결제 확정 시 기록되는 최소 주문 스냅샷. PG·웹훅 연동 후 INSERT 경로를 연결하면 대시보드 매출 집계에 반영된다.
+ * 결제 확정 시 기록되는 최소 주문 스냅샷. PG(서버 confirm) 연동 후 INSERT 경로를 연결하면 대시보드 매출 집계에 반영된다.
  */
 @Entity
 @Table(name = "shop_orders")
@@ -39,6 +39,15 @@ public class ShopOrder {
 
     @Column(name = "user_id")
     private Long userId;
+
+    @Column(name = "merchant_order_id", unique = true, length = 64)
+    private String merchantOrderId;
+
+    @Column(name = "toss_payment_key", length = 200)
+    private String tossPaymentKey;
+
+    @Column(name = "receipt_url", columnDefinition = "text")
+    private String receiptUrl;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
