@@ -10,9 +10,8 @@ import {
   type ReactNode,
 } from "react";
 import * as authApi from "../lib/api/auth";
+import { AUTH_SESSION_ACCESS_KEY } from "../lib/auth-browser-session";
 import type { AuthResponse, MyProfile } from "../types/auth";
-
-const STORAGE_ACCESS = "cinepark_access_token";
 const STORAGE_REFRESH = "cinepark_refresh_token";
 const STORAGE_USER = "cinepark_user";
 
@@ -48,7 +47,7 @@ function readStorage(): { access: string | null; user: UserSummary | null } {
     return { access: null, user: null };
   }
   try {
-    const access = sessionStorage.getItem(STORAGE_ACCESS);
+    const access = sessionStorage.getItem(AUTH_SESSION_ACCESS_KEY);
     const raw = sessionStorage.getItem(STORAGE_USER);
     const user = raw ? (JSON.parse(raw) as UserSummary) : null;
     return { access, user };
@@ -70,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const persist = useCallback((res: AuthResponse) => {
-    sessionStorage.setItem(STORAGE_ACCESS, res.accessToken);
+    sessionStorage.setItem(AUTH_SESSION_ACCESS_KEY, res.accessToken);
     sessionStorage.setItem(STORAGE_REFRESH, res.refreshToken);
     const summary: UserSummary = {
       email: res.email,
@@ -95,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clear = useCallback(() => {
-    sessionStorage.removeItem(STORAGE_ACCESS);
+    sessionStorage.removeItem(AUTH_SESSION_ACCESS_KEY);
     sessionStorage.removeItem(STORAGE_REFRESH);
     sessionStorage.removeItem(STORAGE_USER);
     setAccessToken(null);

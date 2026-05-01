@@ -79,6 +79,9 @@ export default function Header() {
         <div className="container header-gnb-inner">
           <ul className="gnb-menu">
             <li>
+              <Link href="/coupons">쿠폰 마켓</Link>
+            </li>
+            <li>
               <Link href="/intro">토탈쿠폰 소개</Link>
             </li>
             <li>
@@ -112,6 +115,11 @@ export default function Header() {
       <div className={`mobile-drawer ${open ? "open" : ""}`} role="dialog" aria-hidden={!open}>
         <p className="mobile-drawer-section">메뉴</p>
         <ul className="mobile-drawer-menu">
+          <li>
+            <Link href="/coupons" onClick={closeMenu}>
+              쿠폰 마켓
+            </Link>
+          </li>
           <li>
             <Link href="/intro" onClick={closeMenu}>
               토탈쿠폰 소개

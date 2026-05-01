@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@tosspayments/payment-widget-sdk": "^0.12.1",
     "chart.js": "^4.5.1",
     "next": "^16.0.8",
     "react": "^18",

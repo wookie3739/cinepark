@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { COUPON_CATEGORIES, type CategoryId } from "../../lib/coupon-brands-catalog";
 import { fetchCouponCategories, fetchCouponProductPage } from "../../lib/api/catalog";
-import { formatPublishedDate } from "../../lib/format-date";
 import type { CouponCategory, CouponProductSummary } from "../../types/catalog";
-import type { NoticeSummary } from "../../types/customer-service";
 import { ProductPriceDisplay } from "./ProductPriceDisplay";
 import BrandUsageModal from "./BrandUsageModal";
 
@@ -15,7 +13,7 @@ const PLANNED_BY_CODE: Partial<Record<CategoryId, boolean>> = Object.fromEntries
 ) as Partial<Record<CategoryId, boolean>>;
 
 type HomeCatalogProps = {
-  homeNotices?: NoticeSummary[];
+  homeNotices?: unknown[];
   homeNoticesError?: string | null;
 };
 
@@ -74,54 +72,67 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
   }, [apiCategories]);
 
   const catMeta = apiCategories.find((x) => x.code === category);
-  const isEmptyCategory = products.length === 0;
+  const hotDeals = products.slice(0, 4);
+  const hasAnyProducts = products.length > 0;
 
   return (
-    <div className="container">
-      <section className="main-visual">
-        <article className="main-banner">
-          <div className="main-slider">
-            <div className="slide-track">
-              <div className="slide-item">
-                <span className="slide-tag">CINEPARK COUPON</span>
-                <h1>토탈쿠폰으로 바로 사용</h1>
-                <p>결제 후 쿠폰번호로 제휴 브랜드 채널에서 이용하세요.</p>
-              </div>
-              <div className="slide-item">
-                <span className="slide-tag">PAYMENT</span>
-                <h1>PortOne · TossPayments 결제 지원</h1>
-                <p>주문·결제 상태와 결제금액을 화면에서 확인합니다.</p>
-              </div>
-              <div className="slide-item">
-                <span className="slide-tag">SIMPLE</span>
-                <h1>알림 없이 화면에서 바로 확인</h1>
-                <p>주문완료와 마이페이지에서 쿠폰번호를 확인할 수 있습니다.</p>
-              </div>
-            </div>
+    <div className="container landing-v2">
+      <section className="landing-v2-hero">
+        <div className="landing-v2-hero-text">
+          <span className="landing-v2-pill">대한민국 No.1 영화 쿠폰 플랫폼</span>
+          <h1>
+            영화, 이제 가장
+            <br />
+            <span className="landing-v2-hero-accent">똑똑하게 즐기세요</span>
+          </h1>
+          <p>
+            영화관 쿠폰을 최저가로 구매하고 즉시 사용하세요.
+            <br />
+            복잡한 예매 과정 없이 더 똑똑한 관람을 시작할 수 있습니다.
+          </p>
+          <div className="landing-v2-hero-actions">
+            <Link href="/coupons" className="button">
+              쿠폰 보러가기
+            </Link>
+            <a href="#benefits" className="button secondary landing-v2-btn-candy">
+              혜택 보기
+            </a>
           </div>
-        </article>
+        </div>
+        <div className="landing-v2-hero-media" aria-hidden="true">
+          <img
+            src="https://www.figma.com/api/mcp/asset/6f082ada-6154-4b6e-8f81-8e83f9ed3ecf"
+            alt=""
+            className="landing-v2-hero-image"
+          />
+        </div>
+      </section>
 
-        <div className="side-banner-stack">
-          <article className="side-banner small">
-            <span className="badge-blue">EVENT</span>
-            <p>오픈 기념 이벤트 진행 중</p>
+      <section className="landing-v2-benefits" id="benefits">
+        <div className="landing-v2-section-head">
+          <h2>CineSave만의 특별함</h2>
+          <p>가장 간편하고 저렴하게 영화를 즐기는 방법</p>
+        </div>
+        <div className="landing-v2-benefit-grid">
+          <article className="landing-v2-benefit-card landing-v2-benefit-card--1">
+            <div className="landing-v2-benefit-icon">%</div>
+            <h3>압도적 할인율</h3>
+            <p>영화관 직접 구매보다 더 저렴한 가격으로 영화 팬들의 지갑을 지켜드립니다.</p>
           </article>
-          <article className="side-banner small">
-            <span className="badge-blue">GUIDE</span>
-            <p>구매부터 사용까지 한눈에</p>
+          <article className="landing-v2-benefit-card landing-v2-benefit-card--2">
+            <div className="landing-v2-benefit-icon">QR</div>
+            <h3>간편한 사용</h3>
+            <p>구매 즉시 쿠폰 번호 발급으로 현장 매표소와 온라인 앱에서 바로 이용 가능합니다.</p>
           </article>
-          <article className="side-banner small">
-            <span className="badge-blue">SAFE</span>
-            <p>결제 데이터 안전 보관</p>
-          </article>
-          <article className="side-banner small">
-            <span className="badge-blue">FAQ</span>
-            <p>자주 묻는 질문 보기</p>
+          <article className="landing-v2-benefit-card landing-v2-benefit-card--3">
+            <div className="landing-v2-benefit-icon">OK</div>
+            <h3>신뢰할 수 있는 플랫폼</h3>
+            <p>안정적인 결제 환경과 고객지원으로 안심하고 구매할 수 있습니다.</p>
           </article>
         </div>
       </section>
 
-      <section className="category-tiles-section" aria-label="카테고리 선택">
+      <section className="category-tiles-section landing-v2-cats" aria-label="카테고리 선택">
         <div className="category-tiles">
           {categoryTiles.map((cat) => {
             const selected = cat.code === category;
@@ -149,81 +160,98 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
         </p>
       ) : null}
 
-      {!isEmptyCategory ? (
-        <>
-          <section className="section" id="hot-deal">
-            <div className="section-head">
-              <h2>
-                <span className="muted-label">{catMeta?.label ?? ""}</span>{" "}
-                <span className="eng">Hot Deal</span>
-              </h2>
-            </div>
-            <ul className="product-grid">
-              {products.slice(0, 6).map((p) => (
-                <li key={p.productCode} className="product-card">
-                  <Link href={`/coupons/${p.productCode}`} className="product-card-top">
-                    <div className="product-image">
-                      {p.mainImageUrl ? (
-                        <img src={p.mainImageUrl} alt="" className="product-thumb-cover" />
-                      ) : (
-                        "CINE"
-                      )}
-                    </div>
-                  </Link>
-                  <div className="product-meta">
-                    <Link href={`/coupons/${p.productCode}`} className="product-meta-link">
-                      <span className="product-brand">{p.brandLabel}</span>
-                      <p className="product-name">{p.name}</p>
-                    </Link>
-                    <ProductPriceDisplay unitPrice={p.unitPrice} originPrice={p.originPrice} layout="card" />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+      <section className="landing-v2-hot" id="hot-deals">
+        <div className="landing-v2-hot-head">
+          <div>
+            <h2>
+              <span className="landing-v2-title-gradient">실시간 인기 쿠폰</span>
+            </h2>
+            <p>
+              <span className="muted-label">{catMeta?.label ?? "카테고리"}</span>
+              지금 가장 많이 구매되고 있는 상품입니다.
+            </p>
+          </div>
+          {hasAnyProducts ? (
+            <Link href="/coupons" className="landing-v2-more">
+              전체보기
+            </Link>
+          ) : null}
+        </div>
 
-          <section className="section best-section">
-            <div className="section-head">
-              <h2>
-                {catMeta?.label ?? "카테고리"} <span className="eng">BEST</span>
-              </h2>
-            </div>
-            <ul className="product-grid">
-              {products.map((p, idx) => (
-                <li key={`${p.productCode}-best`} className="product-card">
-                  <Link href={`/coupons/${p.productCode}`} className="product-card-top">
-                    <div className="product-image">
-                      {idx < 5 ? <span className="rank-badge">{idx + 1}</span> : null}
-                      {p.mainImageUrl ? (
-                        <img src={p.mainImageUrl} alt="" className="product-thumb-cover" />
-                      ) : (
-                        "CINE"
-                      )}
-                    </div>
-                  </Link>
-                  <div className="product-meta">
-                    <Link href={`/coupons/${p.productCode}`} className="product-meta-link">
-                      <span className="product-brand">{p.brandLabel}</span>
-                      <p className="product-name">{p.name}</p>
-                    </Link>
-                    <ProductPriceDisplay unitPrice={p.unitPrice} originPrice={p.originPrice} layout="card" />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </>
-      ) : (
-        <section className="section category-planned-block" aria-live="polite">
+        {!hasAnyProducts ? (
           <div className="panel flat planned-category-panel">
             <h2 className="planned-category-title">{catMeta ? plannedLabel(catMeta) : category}</h2>
             <p className="planned-category-lead">이 카테고리에 판매 중인 상품이 없습니다.</p>
             <p className="muted">다른 카테고리를 선택하거나 잠시 후 다시 확인해 주세요.</p>
           </div>
-        </section>
-      )}
+        ) : (
+          <ul className="product-grid landing-v2-grid4">
+            {hotDeals.map((p, idx) => {
+              const chip =
+                idx === 0 ? "hot" : idx === 1 ? "best" : idx === 2 ? "sale" : "new";
+              const chipLabel = idx === 0 ? "HOT" : idx === 1 ? "BEST" : idx === 2 ? "SALE" : "NEW";
+              return (
+              <li key={p.productCode} className="product-card landing-v2-deal-card">
+                <Link href={`/coupons/${p.productCode}`} className="product-card-top">
+                  <div className="product-image">
+                    {p.mainImageUrl ? <img src={p.mainImageUrl} alt="" className="product-thumb-cover" /> : "CINE"}
+                    <span className={`landing-v2-chip landing-v2-chip--${chip}`}>{chipLabel}</span>
+                  </div>
+                </Link>
+                <div className="product-meta">
+                  <Link href={`/coupons/${p.productCode}`} className="product-meta-link">
+                    <span className="product-brand">{p.brandLabel}</span>
+                    <p className="product-name">{p.name}</p>
+                  </Link>
+                  <ProductPriceDisplay unitPrice={p.unitPrice} originPrice={p.originPrice} layout="card" />
+                  <Link href={`/coupons/${p.productCode}`} className="card-button">
+                    구매하기
+                  </Link>
+                </div>
+              </li>
+            );
+            })}
+          </ul>
+        )}
+      </section>
 
-      <section className="section guide-section">
+      <section className="landing-v2-steps">
+        <div className="landing-v2-section-head">
+          <h2>이용 방법</h2>
+          <p>단 3단계로 끝나는 간편한 예매 프로세스</p>
+        </div>
+        <ol className="landing-v2-steps-list">
+          <li>
+            <div className="landing-v2-step-icon">1</div>
+            <strong>쿠폰 선택</strong>
+            <p>원하는 영화관과 할인 옵션을 선택하세요.</p>
+          </li>
+          <li>
+            <div className="landing-v2-step-icon">2</div>
+            <strong>결제 완료</strong>
+            <p>다양한 결제 수단으로 구매 즉시 번호를 발급받습니다.</p>
+          </li>
+          <li>
+            <div className="landing-v2-step-icon">3</div>
+            <strong>번호 등록 및 예매</strong>
+            <p>영화관 공식 앱에서 번호를 입력하고 예매하세요.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section className="landing-v2-cta">
+        <h2>
+          지금 가입하고
+          <br />
+          멤버십 전용 혜택을 받으세요
+        </h2>
+        <p>첫 가입 고객에게 즉시 사용할 수 있는 혜택을 제공합니다. 가장 똑똑한 영화 관람을 시작해 보세요.</p>
+        <Link href="/signup" className="button secondary">
+          지금 바로 시작하기
+        </Link>
+      </section>
+
+      <section className="section guide-section landing-v2-guides">
         <article className="guide-card">
           <h3>회원 가입 안내</h3>
           <p>회원가입 후 마이페이지에서 구매 내역과 쿠폰번호를 확인할 수 있습니다.</p>
@@ -233,45 +261,28 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
         </article>
         <article className="guide-card">
           <h3>쿠폰 사용 안내</h3>
-          <p>
-            결제 완료 후 쿠폰번호가 발급되면, 상품에 등록된 제휴 사이트에서 사용하실 수 있습니다. 링크가 등록된 브랜드만
-            아래에서 선택됩니다.
-          </p>
+          <p>결제 후 발급된 쿠폰번호로 제휴처에서 바로 이용 가능합니다.</p>
           <button type="button" className="guide-link" onClick={() => setUsageModalOpen(true)}>
             사용하러 가기
           </button>
         </article>
       </section>
 
-      <section className="section">
-        <div className="section-head">
-          <h2>공지사항</h2>
-        </div>
-        {homeNoticesError ? (
-          <p className="card-inline-msg" role="alert">
-            {homeNoticesError}
-          </p>
-        ) : null}
-        {homeNotices.length === 0 && !homeNoticesError ? (
-          <p className="muted">등록된 공지가 없습니다.</p>
-        ) : null}
-        {homeNotices.length > 0 ? (
-          <ul className="notice-list">
-            {homeNotices.map((n) => (
-              <li key={n.id} className={n.pinned ? "emph" : undefined}>
-                <Link href={`/notice/${n.id}`} className="notice-list-row">
-                  <span className="notice-text">
-                    {n.category ? `${n.category} ${n.title}` : n.title}
-                  </span>
-                  <span className="notice-date">{formatPublishedDate(n.createdAt)}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
+      {(homeNotices.length > 0 || homeNoticesError) && (
+        <section className="section">
+          <div className="section-head">
+            <h2>공지사항</h2>
+          </div>
+          {homeNoticesError ? <p className="card-inline-msg">{homeNoticesError}</p> : null}
+          {homeNotices.length > 0 ? (
+            <Link href="/notice" className="button secondary">
+              공지 전체 보기
+            </Link>
+          ) : null}
+        </section>
+      )}
 
-      <section className="service-link">
+      <section className="service-link landing-v2-service-strip">
         <Link href="/service">서비스 안내</Link>
         <Link href="/cases">활용사례</Link>
         <Link href="/faq">자주하는 질문</Link>

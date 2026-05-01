@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { writeCheckoutSession } from "../../../../lib/checkout-session";
 import { fetchCouponProductSegment } from "../../../../lib/api/catalog";
 import { useCart } from "../../../../context/CartContext";
 import type { CouponProductDetail } from "../../../../types/catalog";
 import { ProductPriceDisplay } from "../../../components/ProductPriceDisplay";
+import { SiteToast } from "../../../components/SiteToast";
 
 export default function CouponDetailPage() {
   const params = useParams();
@@ -18,6 +19,10 @@ export default function CouponDetailPage() {
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
   const [wishMsg, setWishMsg] = useState<string | null>(null);
+  const [cartToast, setCartToast] = useState<string | null>(null);
+  const [addingToCart, setAddingToCart] = useState(false);
+
+  const clearCartToast = useCallback(() => setCartToast(null), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,8 +82,15 @@ export default function CouponDetailPage() {
   };
 
   const onAddCart = async () => {
-    await addToCart(product.productCode, qty);
-    router.push("/cart");
+    setAddingToCart(true);
+    try {
+      await addToCart(product.productCode, qty);
+      setCartToast("장바구니에 추가되었습니다.");
+    } catch (e) {
+      setCartToast(e instanceof Error ? e.message : "장바구니에 담지 못했습니다.");
+    } finally {
+      setAddingToCart(false);
+    }
   };
 
   const onBuyNow = () => {
@@ -96,6 +108,7 @@ export default function CouponDetailPage() {
 
   return (
     <main className="page">
+      <SiteToast message={cartToast} onDismiss={clearCartToast} />
       <div className="container">
         <nav className="breadcrumb">
           <Link href="/">홈</Link>
@@ -169,8 +182,13 @@ export default function CouponDetailPage() {
               <button type="button" className="button secondary" onClick={onWish}>
                 관심상품 담기
               </button>
-              <button type="button" className="button secondary" onClick={() => void onAddCart()}>
-                장바구니 담기
+              <button
+                type="button"
+                className="button secondary"
+                disabled={addingToCart}
+                onClick={() => void onAddCart()}
+              >
+                {addingToCart ? "담는 중…" : "장바구니 담기"}
               </button>
               <button type="button" className="button" onClick={onBuyNow}>
                 바로 구매하기
