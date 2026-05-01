@@ -1,41 +1,79 @@
 import Link from "next/link";
+import { fetchFaqList } from "../../../lib/api/customer-service";
+import type { FaqItem } from "../../../types/customer-service";
 
-const links = [
-  { href: "/service", label: "서비스 안내", desc: "이용 흐름과 결제 안내" },
-  { href: "/cases", label: "활용사례", desc: "도입 시나리오 예시" },
-  { href: "/faq", label: "자주하는 질문", desc: "FAQ" },
-  { href: "/inquiry", label: "1:1 문의", desc: "문의 남기기" },
-  { href: "/notice", label: "공지사항", desc: "운영 공지" },
+const FAQ_CATEGORIES: { q: string; label: string; icon: string }[] = [
+  { q: "결제", label: "결제·혜택", icon: "💳" },
+  { q: "환불", label: "취소·환불", icon: "↩️" },
+  { q: "예매", label: "예매·사용", icon: "🎬" },
+  { q: "계정", label: "계정·인증", icon: "👤" },
+  { q: "쿠폰", label: "쿠폰번호", icon: "🎫" },
+  { q: "이벤트", label: "이벤트", icon: "🎁" },
+  { q: "제휴", label: "제휴·입점", icon: "🤝" },
+  { q: "기타", label: "기타", icon: "💬" },
 ];
 
-export default function SupportHubPage() {
+async function loadFaqs(): Promise<{ items: FaqItem[]; error: string | null }> {
+  try {
+    const items = await fetchFaqList();
+    return { items, error: null };
+  } catch (e) {
+    return {
+      items: [],
+      error: e instanceof Error ? e.message : "목록을 불러오지 못했습니다.",
+    };
+  }
+}
+
+export default async function SupportHomePage() {
+  const { items, error } = await loadFaqs();
+  const top5 = items.slice(0, 5);
+
   return (
-    <main className="page">
-      <div className="container narrow-page">
-        <nav className="breadcrumb">
-          <Link href="/">홈</Link>
-          <span className="sep">/</span>
-          <strong>고객센터</strong>
-        </nav>
+    <>
+      <nav className="support-breadcrumb">
+        <Link href="/">홈</Link>
+        <span className="sep"> / </span>
+        <span>고객센터</span>
+      </nav>
 
-        <article className="static-article panel flat">
-          <h1 className="static-title">고객센터</h1>
-          <p className="static-lead">
-            서비스 이용·결제·예매 관련 안내를 아래 메뉴에서 확인하실 수 있습니다. 목업 화면입니다.
-          </p>
+      <h2 className="support-hub-title">카테고리별 자주 묻는 질문</h2>
+      <p className="support-hub-lead">주제를 선택하면 FAQ에서 해당 키워드로 바로 검색됩니다.</p>
 
-          <ul className="support-grid">
-            {links.map((l) => (
-              <li key={l.href}>
-                <Link href={l.href} className="support-card">
-                  <strong>{l.label}</strong>
-                  <span>{l.desc}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </article>
+      <div className="support-cat-grid">
+        {FAQ_CATEGORIES.map((c) => (
+          <Link key={c.q} href={`/support/faq?q=${encodeURIComponent(c.q)}`} className="support-cat-card">
+            <span className="support-cat-icon" aria-hidden>
+              {c.icon}
+            </span>
+            {c.label}
+          </Link>
+        ))}
       </div>
-    </main>
+
+      <h3 className="support-top5-title">TOP 5 자주 묻는 질문</h3>
+      {error ? (
+        <p className="card-inline-msg" role="alert">
+          {error}
+        </p>
+      ) : top5.length === 0 ? (
+        <p className="muted">등록된 FAQ가 없습니다.</p>
+      ) : (
+        <ul className="support-top5-list">
+          {top5.map((item) => (
+            <li key={item.id} className="support-top5-item">
+              <details>
+                <summary>{item.question}</summary>
+                <div className="support-top5-answer">{item.answer}</div>
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="muted" style={{ marginTop: "1.25rem", fontSize: 13 }}>
+        전체 FAQ는 <Link href="/support/faq">자주 찾는 FAQ</Link> 메뉴에서 확인할 수 있습니다.
+      </p>
+    </>
   );
 }

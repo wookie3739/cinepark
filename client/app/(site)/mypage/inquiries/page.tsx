@@ -73,7 +73,7 @@ export default function MyInquiriesPage() {
         문의 제목을 눌러 작성 내용과 답변 전문을 확인하세요. 관리자가 답변을 등록하면 상태가 「답변완료」로 바뀝니다.
       </p>
       <div className="static-cta-row" style={{ marginBottom: "1rem" }}>
-        <Link href="/inquiry" className="button">
+        <Link href="/support/inquiry" className="button">
           문의 작성
         </Link>
       </div>

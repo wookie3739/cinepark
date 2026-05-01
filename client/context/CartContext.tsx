@@ -36,6 +36,8 @@ type CartApi = {
   addToCart: (productCode: string, quantity: number) => Promise<void>;
   setLineQuantity: (productCode: string, quantity: number) => Promise<void>;
   removeFromCart: (productCode: string) => Promise<void>;
+  /** 로그인 상태에서 서버 장바구니만 다시 불러옵니다(결제 완료 후 등). */
+  refreshServerCart: () => Promise<void>;
   addToWishlist: (productCode: string) => boolean;
   removeFromWishlist: (productCode: string) => void;
   cartItemCount: number;
@@ -324,6 +326,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setWishlist((prev) => prev.filter((id) => id !== code));
   }, []);
 
+  const refreshServerCart = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const view = await cartApi.getCart();
+      setServerCart(view);
+    } catch {
+      setServerCart(null);
+    }
+  }, [accessToken]);
+
   const cartItemCount = useMemo(() => {
     if (accessToken && serverCart) {
       return serverCart.lines.reduce((s, l) => s + l.quantity, 0);
@@ -356,6 +368,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       addToCart,
       setLineQuantity,
       removeFromCart,
+      refreshServerCart,
       addToWishlist,
       removeFromWishlist,
       cartItemCount,
@@ -371,6 +384,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       addToCart,
       setLineQuantity,
       removeFromCart,
+      refreshServerCart,
       addToWishlist,
       removeFromWishlist,
       cartItemCount,

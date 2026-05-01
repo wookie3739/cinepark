@@ -9,6 +9,14 @@ export function formatPublishedDate(iso: string): string {
   return `${y}.${m}.${day}`;
 }
 
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return iso;
+  }
+  return d.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
+}
+
 export function inquiryStatusLabel(status: string): string {
   if (status === "ANSWERED") {
     return "답변완료";

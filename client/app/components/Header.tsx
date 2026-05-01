@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useCart } from "../../context/CartContext";
@@ -11,6 +12,9 @@ export default function Header() {
   const { user, isReady, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [brandModalOpen, setBrandModalOpen] = useState(false);
+
+  const pathname = usePathname() ?? "";
+  const supportActive = pathname === "/support" || pathname.startsWith("/support/");
 
   const closeMenu = () => setOpen(false);
 
@@ -35,6 +39,29 @@ export default function Header() {
           <Link href="/" className="logo" onClick={closeMenu}>
             cinepark<span>COUPON</span>
           </Link>
+
+          <nav className="header-gnb-inline" aria-label="주 메뉴">
+            <ul className="gnb-menu">
+              <li>
+                <Link href="/coupons">쿠폰 마켓</Link>
+              </li>
+              <li>
+                <Link href="/support" className={supportActive ? "is-gnb-active" : undefined}>
+                  고객센터
+                </Link>
+              </li>
+              <li>
+                <a href="https://totalseller.co.kr/" target="_blank" rel="noreferrer">
+                  토탈셀러
+                </a>
+              </li>
+              <li>
+                <button type="button" className="gnb-inline-btn" onClick={() => setBrandModalOpen(true)}>
+                  사용하러 가기
+                </button>
+              </li>
+            </ul>
+          </nav>
 
           <ul className="header-util-menu">
             {authenticated ? (
@@ -75,43 +102,6 @@ export default function Header() {
         </div>
       </div>
 
-      <nav className="header-gnb">
-        <div className="container header-gnb-inner">
-          <ul className="gnb-menu">
-            <li>
-              <Link href="/coupons">쿠폰 마켓</Link>
-            </li>
-            <li>
-              <Link href="/intro">토탈쿠폰 소개</Link>
-            </li>
-            <li>
-              <Link href="/service">이용안내</Link>
-            </li>
-            <li>
-              <Link href="/support">고객센터</Link>
-            </li>
-            <li>
-              <a
-                href="https://totalseller.co.kr/"
-                target="_blank"
-                rel="noreferrer"
-              >
-                토탈셀러
-              </a>
-            </li>
-            <li>
-              <button
-                type="button"
-                className="gnb-inline-btn"
-                onClick={() => setBrandModalOpen(true)}
-              >
-                사용하러 가기
-              </button>
-            </li>
-          </ul>
-        </div>
-      </nav>
-
       <div className={`mobile-drawer ${open ? "open" : ""}`} role="dialog" aria-hidden={!open}>
         <p className="mobile-drawer-section">메뉴</p>
         <ul className="mobile-drawer-menu">
@@ -121,17 +111,7 @@ export default function Header() {
             </Link>
           </li>
           <li>
-            <Link href="/intro" onClick={closeMenu}>
-              토탈쿠폰 소개
-            </Link>
-          </li>
-          <li>
-            <Link href="/service" onClick={closeMenu}>
-              이용안내
-            </Link>
-          </li>
-          <li>
-            <Link href="/support" onClick={closeMenu}>
+            <Link href="/support" className={supportActive ? "is-gnb-active" : undefined} onClick={closeMenu}>
               고객센터
             </Link>
           </li>

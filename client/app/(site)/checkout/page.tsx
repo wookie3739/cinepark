@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { ANONYMOUS, loadPaymentWidget, type PaymentWidgetInstance } from "@tosspayments/payment-widget-sdk";
+import { loadPaymentWidget, type PaymentWidgetInstance } from "@tosspayments/payment-widget-sdk";
+import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchCouponProductsBatch } from "../../../lib/api/catalog";
+import { prepareCheckout } from "../../../lib/api/checkout";
 import { readCheckoutSession, writeCheckoutSession } from "../../../lib/checkout-session";
-import { TOSS_PAYMENTS_CLIENT_KEY } from "../../../lib/tosspayments-client";
+import { TOSS_PAYMENTS_CLIENT_KEY, tossWidgetCustomerKey } from "../../../lib/tosspayments-client";
 import type { CouponProductDetail } from "../../../types/catalog";
 import { ProductPriceDisplay } from "../../components/ProductPriceDisplay";
 
@@ -16,11 +18,17 @@ type ResolvedLine = {
   unitPrice: number;
   originPrice: number;
   subtotal: number;
+  mainImageUrl: string | null;
+  categoryLabel: string;
 };
 
 type PaymentMethodsWidget = ReturnType<PaymentWidgetInstance["renderPaymentMethods"]>;
 
 export default function CheckoutPage() {
+  const { data: session, status: sessionStatus } = useSession();
+  const accessToken = session?.accessToken ?? null;
+  const tossCustomerKey = useMemo(() => tossWidgetCustomerKey(accessToken), [accessToken]);
+
   const [lines, setLines] = useState<ResolvedLine[]>([]);
   const [ready, setReady] = useState(false);
   const [failHint, setFailHint] = useState(false);
@@ -28,6 +36,7 @@ export default function CheckoutPage() {
   const [widgetError, setWidgetError] = useState<string | null>(null);
   const [widgetReady, setWidgetReady] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
   const paymentWidgetRef = useRef<PaymentWidgetInstance | null>(null);
   const paymentMethodsWidgetRef = useRef<PaymentMethodsWidget | null>(null);
   const lineKey = useMemo(
@@ -36,6 +45,12 @@ export default function CheckoutPage() {
   );
 
   const total = useMemo(() => lines.reduce((s, l) => s + l.subtotal, 0), [lines]);
+  const orderSubtotal = total;
+  const couponDiscount = 0;
+  const pointsUsed = 0;
+  const finalTotal = Math.max(0, orderSubtotal - couponDiscount - pointsUsed);
+  const sessionReady = sessionStatus !== "loading";
+  const payBlockedNoAuth = sessionReady && !accessToken;
 
   useEffect(() => {
     const raw = readCheckoutSession();
@@ -64,6 +79,8 @@ export default function CheckoutPage() {
             unitPrice: p.unitPrice,
             originPrice: p.originPrice,
             subtotal: p.unitPrice * row.quantity,
+            mainImageUrl: p.mainImageUrl,
+            categoryLabel: p.categoryLabel || p.categoryCode || "쿠폰",
           });
         }
         setLines(resolved);
@@ -96,10 +113,18 @@ export default function CheckoutPage() {
   // 결제위젯은 장바구니 구성(lineKey)이 바뀔 때만 다시 붙이고, 금액만 바뀌면 아래 updateAmount로 반영합니다.
   // cleanup에서 clearPaymentWidget을 호출하면 React Strict Mode와 SDK loadScript 캐시가 꼬여 UI가 비는 경우가 있습니다.
   useEffect(() => {
-    if (!ready || lines.length === 0 || total < 1) {
+    if (!ready || lines.length === 0 || finalTotal < 1) {
       paymentWidgetRef.current = null;
       paymentMethodsWidgetRef.current = null;
       setWidgetReady(false);
+      return;
+    }
+    if (!sessionReady || !accessToken) {
+      paymentWidgetRef.current = null;
+      paymentMethodsWidgetRef.current = null;
+      setWidgetReady(false);
+      setWidgetLoading(false);
+      setWidgetError(null);
       return;
     }
 
@@ -110,12 +135,12 @@ export default function CheckoutPage() {
 
     (async () => {
       try {
-        const paymentWidget = await loadPaymentWidget(TOSS_PAYMENTS_CLIENT_KEY, ANONYMOUS);
+        const paymentWidget = await loadPaymentWidget(TOSS_PAYMENTS_CLIENT_KEY, tossCustomerKey);
         if (cancelled) return;
         paymentWidgetRef.current = paymentWidget;
         const pmw = paymentWidget.renderPaymentMethods(
           "#toss-payment-methods",
-          { value: total, currency: "KRW" },
+          { value: finalTotal, currency: "KRW" },
           { variantKey: "DEFAULT" },
         );
         paymentMethodsWidgetRef.current = pmw;
@@ -137,52 +162,67 @@ export default function CheckoutPage() {
       paymentWidgetRef.current = null;
       paymentMethodsWidgetRef.current = null;
     };
-  }, [ready, lineKey]);
+  }, [ready, lineKey, sessionReady, accessToken, tossCustomerKey, finalTotal]);
 
   useEffect(() => {
-    if (total < 1) return;
+    if (finalTotal < 1) return;
     try {
-      paymentMethodsWidgetRef.current?.updateAmount(total);
+      paymentMethodsWidgetRef.current?.updateAmount(finalTotal);
     } catch {
       /* 위젯 미준비 시 무시 */
     }
-  }, [total]);
+  }, [finalTotal]);
 
   const onPay = useCallback(async () => {
     setPayError(null);
     const widget = paymentWidgetRef.current;
-    if (!widget || lines.length === 0 || total <= 0) {
+    if (!widget || lines.length === 0 || finalTotal <= 0) {
       setPayError("결제 준비가 되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+    if (!accessToken) {
+      setPayError("로그인이 필요합니다.");
       return;
     }
     const origin = window.location.origin;
     const codes = [...new Set(lines.map((l) => l.productCode).filter(Boolean))];
-    const successQs = new URLSearchParams();
-    if (codes.length > 0) successQs.set("codes", codes.join(","));
-    const successUrl = `${origin}/order/complete?${successQs.toString()}`;
     const failUrl = `${origin}/checkout?fail=1`;
-    const orderId = `cp_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
-    const orderName =
-      lines.length === 1
-        ? lines[0].name.slice(0, 80)
-        : `CINEPARK 쿠폰 ${lines.length}건`;
 
+    setPaying(true);
     try {
+      const prepared = await prepareCheckout({
+        lines: lines.map((l) => ({ productCode: l.productCode, quantity: l.quantity })),
+      });
+      const successUrl =
+        codes.length > 0
+          ? `${origin}/order/complete?codes=${encodeURIComponent(codes.join(","))}`
+          : `${origin}/order/complete`;
+
+      if (prepared.amount !== finalTotal) {
+        try {
+          paymentMethodsWidgetRef.current?.updateAmount(prepared.amount);
+        } catch {
+          /* 위젯 미동기화 시에도 서버 금액으로 결제 진행 */
+        }
+      }
+
       await widget.requestPayment({
-        orderId,
-        orderName,
+        orderId: prepared.merchantOrderId,
+        orderName: prepared.orderName,
         successUrl,
         failUrl,
       });
     } catch (e) {
       setPayError(e instanceof Error ? e.message : "결제를 시작하지 못했습니다.");
+    } finally {
+      setPaying(false);
     }
-  }, [lines, total]);
+  }, [lines, finalTotal, accessToken]);
 
   if (!ready) {
     return (
-      <main className="page checkout-page">
-        <div className="container narrow-page checkout-page-shell">
+      <main className="page checkout-page checkout-page--order">
+        <div className="container checkout-page-shell">
           <div className="checkout-skeleton panel" aria-busy="true" aria-label="주문 정보 불러오는 중">
             <div className="checkout-skeleton-line checkout-skeleton-line--short" />
             <div className="checkout-skeleton-line" />
@@ -196,8 +236,8 @@ export default function CheckoutPage() {
 
   if (lines.length === 0) {
     return (
-      <main className="page checkout-page">
-        <div className="container narrow-page checkout-page-shell">
+      <main className="page checkout-page checkout-page--order">
+        <div className="container checkout-page-shell">
           <nav className="breadcrumb checkout-breadcrumb">
             <Link href="/">홈</Link>
             <span className="sep">/</span>
@@ -226,19 +266,18 @@ export default function CheckoutPage() {
   }
 
   return (
-    <main className="page checkout-page">
-      <div className="container narrow-page checkout-page-shell">
+    <main className="page checkout-page checkout-page--order">
+      <div className="container checkout-page-shell">
         <nav className="breadcrumb checkout-breadcrumb">
           <Link href="/">홈</Link>
           <span className="sep">/</span>
-          <strong>주문·결제</strong>
+          <strong>주문 및 결제</strong>
         </nav>
 
-        <header className="checkout-hero">
-          <p className="checkout-eyebrow eng">CHECKOUT</p>
-          <h1 className="checkout-title">주문 확인 및 결제</h1>
+        <header className="checkout-hero checkout-hero--compact">
+          <h1 className="checkout-title">주문 및 결제</h1>
           <p className="checkout-lead muted">
-            주문 내용을 확인한 뒤 결제 수단을 선택하고 결제를 진행해 주세요.
+            주문 정보를 확인한 뒤 결제 수단을 고르고, 약관에 동의한 후 결제를 진행해 주세요.
           </p>
         </header>
 
@@ -250,37 +289,94 @@ export default function CheckoutPage() {
 
         <div className="checkout-layout">
           <div className="checkout-main">
-            <section className="panel checkout-panel">
+            <section className="panel checkout-panel checkout-panel--order-items">
               <div className="checkout-panel-head">
-                <h2>주문 상품</h2>
+                <h2>주문 상품 정보</h2>
                 <span className="checkout-count-badge">{lines.length}종</span>
               </div>
-              <ul className="checkout-lines">
+              <ul className="checkout-order-lines">
                 {lines.map((l) => (
-                  <li key={l.productCode} className="checkout-line">
-                    <div className="checkout-line-body">
-                      <span className="product-brand">CINEPARK</span>
-                      <p className="checkout-line-name">{l.name}</p>
+                  <li key={l.productCode} className="checkout-order-line">
+                    <div className="checkout-order-thumb">
+                      {l.mainImageUrl ? (
+                        <img src={l.mainImageUrl} alt="" className="product-thumb-cover" />
+                      ) : (
+                        <span className="checkout-order-thumb-ph" aria-hidden>
+                          CP
+                        </span>
+                      )}
                     </div>
-                    <ProductPriceDisplay
-                      layout="checkout"
-                      unitPrice={l.unitPrice}
-                      originPrice={l.originPrice}
-                      quantity={l.quantity}
-                    />
-                    <strong className="checkout-line-sum">{l.subtotal.toLocaleString()}원</strong>
+                    <div className="checkout-order-main">
+                      <span className="checkout-order-tag">{l.categoryLabel}</span>
+                      <p className="checkout-order-name">{l.name}</p>
+                      <div className="checkout-order-meta">
+                        <ProductPriceDisplay
+                          layout="checkout"
+                          unitPrice={l.unitPrice}
+                          originPrice={l.originPrice}
+                          quantity={l.quantity}
+                        />
+                      </div>
+                    </div>
+                    <div className="checkout-order-sum">
+                      <strong>{l.subtotal.toLocaleString("ko-KR")}원</strong>
+                    </div>
                   </li>
                 ))}
               </ul>
             </section>
 
+            <section className="panel checkout-panel checkout-panel--discount" aria-labelledby="checkout-discount-h">
+              <div className="checkout-panel-head">
+                <h2 id="checkout-discount-h">할인 수단</h2>
+              </div>
+              <p className="checkout-panel-note muted checkout-discount-note">
+                쿠폰·포인트 할인은 서비스 준비 중입니다. 곧 연동될 예정입니다.
+              </p>
+              <div className="checkout-discount-grid">
+                <div className="checkout-discount-field">
+                  <label htmlFor="checkout-coupon-faux">쿠폰</label>
+                  <div className="checkout-discount-row">
+                    <select id="checkout-coupon-faux" className="checkout-faux-control" disabled>
+                      <option>적용 가능한 쿠폰 준비 중</option>
+                    </select>
+                    <button type="button" className="button secondary checkout-discount-btn" disabled>
+                      쿠폰 조회
+                    </button>
+                  </div>
+                </div>
+                <div className="checkout-discount-field">
+                  <label htmlFor="checkout-points-faux">포인트</label>
+                  <div className="checkout-discount-row">
+                    <input
+                      id="checkout-points-faux"
+                      className="checkout-faux-control"
+                      disabled
+                      readOnly
+                      value="0"
+                    />
+                    <button type="button" className="button secondary checkout-discount-btn" disabled>
+                      모두 사용
+                    </button>
+                  </div>
+                  <p className="checkout-discount-hint muted">보유 포인트: — (준비 중)</p>
+                </div>
+              </div>
+            </section>
+
             <section className="panel checkout-panel checkout-panel--payment">
               <div className="checkout-panel-head">
-                <h2>결제 수단</h2>
+                <h2>결제 수단 선택</h2>
               </div>
               <p className="checkout-panel-note muted">
-                토스페이먼츠 결제위젯(테스트)입니다. 테스트 카드로 결제하면 주문 완료 화면으로 이동합니다.
+                아래에서 결제 수단을 선택하세요. 토스페이먼츠 테스트 환경에서 결제하면 주문 완료 화면으로 이동합니다.
               </p>
+              {payBlockedNoAuth ? (
+                <div className="checkout-alert checkout-alert--warn" role="status">
+                  결제는 로그인한 회원만 진행할 수 있습니다.{" "}
+                  <Link href={`/login?callbackUrl=${encodeURIComponent("/checkout")}`}>로그인</Link>
+                </div>
+              ) : null}
               {widgetLoading ? (
                 <div className="checkout-widget-loading muted" aria-live="polite">
                   <span className="checkout-spinner" aria-hidden />
@@ -292,9 +388,8 @@ export default function CheckoutPage() {
                   {widgetError}
                 </div>
               ) : null}
-              <div className="checkout-widget-frame">
+              <div className="checkout-widget-frame checkout-widget-frame--methods-only">
                 <div id="toss-payment-methods" className="toss-widget-slot" />
-                <div id="toss-agreement" className="toss-widget-slot toss-widget-slot--agreement" />
               </div>
             </section>
 
@@ -307,34 +402,57 @@ export default function CheckoutPage() {
 
           <aside className="checkout-aside">
             <div className="panel checkout-summary">
-              <h2 className="checkout-summary-heading">결제 요약</h2>
-              <ul className="checkout-summary-lines">
-                {lines.map((l) => (
-                  <li key={l.productCode} className="checkout-summary-line">
-                    <span className="checkout-summary-name">{l.name}</span>
-                    <span className="checkout-summary-qty">×{l.quantity}</span>
-                    <span className="checkout-summary-price">{l.subtotal.toLocaleString()}원</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="checkout-summary-total-block">
-                <span>총 결제금액</span>
-                <strong>{total.toLocaleString()}원</strong>
+              <h2 className="checkout-summary-heading">결제 금액 요약</h2>
+              <dl className="checkout-summary-breakdown">
+                <div className="checkout-summary-row">
+                  <dt>주문 금액</dt>
+                  <dd>{orderSubtotal.toLocaleString("ko-KR")}원</dd>
+                </div>
+                <div className="checkout-summary-row checkout-summary-row--muted">
+                  <dt>쿠폰 할인</dt>
+                  <dd>
+                    {couponDiscount > 0 ? "-" : ""}
+                    {couponDiscount.toLocaleString("ko-KR")}원
+                  </dd>
+                </div>
+                <div className="checkout-summary-row checkout-summary-row--muted">
+                  <dt>포인트 사용</dt>
+                  <dd>
+                    {pointsUsed > 0 ? "-" : ""}
+                    {pointsUsed.toLocaleString("ko-KR")}원
+                  </dd>
+                </div>
+              </dl>
+              <div className="checkout-summary-final">
+                <span>최종 결제 금액</span>
+                <strong>{finalTotal.toLocaleString("ko-KR")}원</strong>
+              </div>
+              <div className="checkout-widget-frame checkout-widget-frame--agreement-only">
+                <div id="toss-agreement" className="toss-widget-slot toss-widget-slot--agreement" />
               </div>
               <button
                 type="button"
                 className="button checkout-pay-btn"
-                disabled={widgetLoading || !!widgetError || !widgetReady}
+                disabled={
+                  widgetLoading ||
+                  !!widgetError ||
+                  !widgetReady ||
+                  paying ||
+                  payBlockedNoAuth
+                }
                 onClick={() => void onPay()}
               >
-                {total.toLocaleString()}원 결제하기
+                {paying ? "결제 준비 중…" : `${finalTotal.toLocaleString("ko-KR")}원 결제하기`}
               </button>
               <Link href="/cart" className="button secondary checkout-summary-back">
                 이전 단계
               </Link>
-              <p className="checkout-trust muted">
-                결제 정보는 PG사를 통해 안전하게 처리됩니다.
-              </p>
+              <div className="checkout-trust-box" role="note">
+                <p className="checkout-trust-title">보안 결제 적용 중</p>
+                <p className="checkout-trust muted">
+                  256-bit SSL 암호화 및 토스페이먼츠를 통해 결제 정보가 안전하게 처리됩니다.
+                </p>
+              </div>
             </div>
           </aside>
         </div>

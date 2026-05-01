@@ -24,8 +24,8 @@ export default function SiteLayout({ children }: SiteLayoutProps) {
               개인정보 처리방침
             </Link>
             <Link href="/">이용약관</Link>
-            <Link href="/notice">공지사항</Link>
-            <Link href="/service">서비스 안내</Link>
+            <Link href="/support/notice">공지사항</Link>
+            <Link href="/support/guide">이용안내</Link>
           </div>
           <p className="footer-copy">© CINEPARK COUPON. All rights reserved.</p>
         </div>

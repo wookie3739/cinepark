@@ -41,10 +41,10 @@ export default function UseCasesPage() {
           </ul>
 
           <div className="static-cta-row">
-            <Link href="/service" className="button secondary">
-              서비스 안내
+            <Link href="/support/guide" className="button secondary">
+              이용안내
             </Link>
-            <Link href="/inquiry" className="button secondary">
+            <Link href="/support/inquiry" className="button secondary">
               도입 문의
             </Link>
           </div>

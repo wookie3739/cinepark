@@ -32,8 +32,8 @@ export default function TotacouponIntroPage() {
             <Link href="/" className="button">
               토탈쿠폰 구매하기
             </Link>
-            <Link href="/service" className="button secondary">
-              서비스 안내
+            <Link href="/support/guide" className="button secondary">
+              이용안내
             </Link>
           </div>
         </article>

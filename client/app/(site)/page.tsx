@@ -19,7 +19,7 @@ export default async function HomePage() {
   const { notices, error: homeNoticesError } = await loadHomeNotices();
 
   return (
-    <main className="page" id="top">
+    <main className="page page--fd-home" id="top">
       <NoticeModal />
 
       <HomeCatalog homeNotices={notices} homeNoticesError={homeNoticesError} />

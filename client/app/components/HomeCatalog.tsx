@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { COUPON_CATEGORIES, type CategoryId } from "../../lib/coupon-brands-catalog";
 import { fetchCouponCategories, fetchCouponProductPage } from "../../lib/api/catalog";
 import type { CouponCategory, CouponProductSummary } from "../../types/catalog";
-import { ProductPriceDisplay } from "./ProductPriceDisplay";
+import { discountPercentOff } from "../../lib/discount-percent";
 import BrandUsageModal from "./BrandUsageModal";
 
 const PLANNED_BY_CODE: Partial<Record<CategoryId, boolean>> = Object.fromEntries(
@@ -20,6 +20,50 @@ type HomeCatalogProps = {
 function plannedLabel(cat: CouponCategory): string {
   const p = PLANNED_BY_CODE[cat.code as CategoryId];
   return p ? `${cat.label} (예정)` : cat.label;
+}
+
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i);
+  return Math.abs(h);
+}
+
+/** 진행 바·잔여 수(디자인용, 실제 재고 API 아님) */
+function stockVisual(productCode: string): { fillPct: number; remaining: number } {
+  const h = hashCode(productCode);
+  const fillPct = 40 + (h % 55);
+  const remaining = 40 + ((h >> 5) % 160);
+  return { fillPct, remaining };
+}
+
+function CategoryGlyph({ index }: { index: number }) {
+  const common = { width: 26, height: 26, fill: "currentColor" as const };
+  switch (index % 4) {
+    case 0:
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden {...common}>
+          <path d="M4 5h16v2H4V5zm0 4h10v2H4V9zm0 4h16v2H4v-2zm0 4h12v2H4v-2z" />
+        </svg>
+      );
+    case 1:
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden {...common}>
+          <path d="M8.1 13.34l2.83-2.83L3.91 3.5 5.34 2.07l7.07 7.07 2.83-2.83 3.54 3.54-10.68 10.68L8.1 13.34zM14.88 8.48l5.66-5.66L22 4.27l-5.66 5.66-1.46-1.45zm-4.24 4.24L4.27 19.11l1.41 1.41 6.36-6.36-1.42-1.44z" />
+        </svg>
+      );
+    case 2:
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden {...common}>
+          <path d="M6 3v6c0 2.97 2.16 5.43 5 5.91V19H8v2h8v-2h-3v-4.09c2.84-.48 5-2.94 5-5.91V3H6zm2 2h8v4c0 2.21-1.79 4-4 4s-4-1.79-4-4V5z" />
+        </svg>
+      );
+    default:
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden {...common}>
+          <path d="M18.36 9l.6 3H5.04l.6-3h12.72zM20 4H4v2h16V4zm0 3H4l-1 5v2h2v7h2v-7h8v7h2v-7h2v-2l-1-5z" />
+        </svg>
+      );
+  }
 }
 
 export default function HomeCatalog({ homeNotices = [], homeNoticesError = null }: HomeCatalogProps) {
@@ -74,125 +118,65 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
   const catMeta = apiCategories.find((x) => x.code === category);
   const hotDeals = products.slice(0, 4);
   const hasAnyProducts = products.length > 0;
+  const displayCats = categoryTiles.slice(0, 4);
 
   return (
-    <div className="container landing-mall">
-      <div className="landing-mall-topbar">
-        <span>이용·환불 규정은 제휴 영화관 안내를 꼭 확인해 주세요.</span>
-        <Link href="/service">이용안내 보기</Link>
-      </div>
+    <div className="fd-page">
+      <div className="fd-shell">
+        <section className="fd-hero" aria-labelledby="fd-hero-title">
+          <span className="fd-hero-badge">단독 특가</span>
+          <h1 id="fd-hero-title">대작을 더 가볍게 만나세요.</h1>
+          <p>
+            이번 시즌 인기 영화관 할인 쿠폰을 모았습니다. 한정 수량·기간이 붙은 상품도 있으니, 마음에 드는 쿠폰은
+            서둘러 확인해 보세요.
+          </p>
+          <Link href="/coupons" className="fd-hero-cta">
+            쿠폰 보러가기
+          </Link>
+        </section>
 
-      <section className="landing-mall-hero" aria-labelledby="lm-hero-title">
-        <div className="landing-mall-hero-inner">
-          <div className="landing-mall-hero-copy">
-            <span className="landing-mall-badge">영화관 제휴 할인 쿠폰</span>
-            <h1 id="lm-hero-title">
-              자주 가는 극장, <em>골라 담아 바로 결제</em>
-            </h1>
-            <p>
-              결제가 완료되면 쿠폰 번호가 발급됩니다. 각 영화관에서 안내하는 방법대로 모바일 앱이나 현장에서 사용할 수
-              있습니다.
-            </p>
-            <div className="landing-mall-hero-buttons">
-              <Link href="/coupons" className="button">
-                쿠폰 마켓 가기
-              </Link>
-              <a href="#lm-benefits" className="button secondary">
-                구매 전 읽어보기
-              </a>
-            </div>
-          </div>
-          <aside className="landing-mall-hero-panel" aria-label="이용 요약">
-            <h2>이용 요약</h2>
-            <ul>
-              <li>결제 직후 쿠폰 번호가 발급됩니다.</li>
-              <li>앱·매표소 등 극장 안내에 따라 사용합니다.</li>
-              <li>유효기간·환불은 제휴 극장 정책을 따릅니다.</li>
-            </ul>
-            <Link href="/coupons" className="landing-mall-panel-cta">
-              전체 상품 보기 →
-            </Link>
-          </aside>
-        </div>
-      </section>
-
-      <nav className="landing-mall-quick" aria-label="빠른 이동">
-        <Link href="/coupons">쿠폰 마켓</Link>
-        <Link href="/service">이용안내</Link>
-        <Link href="/support">고객센터</Link>
-        <Link href="/faq">자주 묻는 질문</Link>
-        <Link href="/notice">공지사항</Link>
-      </nav>
-
-      <section className="landing-mall-strip" id="lm-benefits">
-        <div className="landing-mall-strip-head">
-          <h2>구매 전 알아두면 좋은 점</h2>
-          <p>금액·발급·환불은 아래 세 가지만 기억해 두시면 됩니다.</p>
-        </div>
-        <div className="landing-mall-strip-grid">
-          <div className="landing-mall-strip-cell">
-            <span className="landing-mall-strip-num">01 가격</span>
-            <strong>상품마다 할인가가 달라요</strong>
-            <p>극장·상품에 따라 조건이 다릅니다. 상세 페이지에서 반드시 확인해 주세요.</p>
-          </div>
-          <div className="landing-mall-strip-cell">
-            <span className="landing-mall-strip-num">02 발급</span>
-            <strong>번호는 결제 직후에 나옵니다</strong>
-            <p>로그인 후 마이페이지의 주문 내역에서도 다시 확인할 수 있습니다.</p>
-          </div>
-          <div className="landing-mall-strip-cell">
-            <span className="landing-mall-strip-num">03 규정</span>
-            <strong>환불·유효기간은 극장 정책</strong>
-            <p>예매 취소 등 세부 사항은 제휴 영화관 규정이 우선입니다. 문의는 FAQ·1:1을 이용해 주세요.</p>
-          </div>
-        </div>
-      </section>
-
-      <div className="landing-mall-main">
-        <section className="category-tiles-section landing-mall-cats" aria-label="카테고리 선택">
-          <div className="category-tiles">
-            {categoryTiles.map((cat) => {
+        <section className="fd-cats" aria-label="카테고리">
+          {displayCats.length === 0 ? (
+            <p className="fd-inline-msg">카테고리를 불러오는 중입니다…</p>
+          ) : (
+            displayCats.map((cat, idx) => {
               const selected = cat.code === category;
               const planned = PLANNED_BY_CODE[cat.code as CategoryId] === true;
               return (
                 <button
                   key={cat.id}
                   type="button"
-                  className={`category-tile ${selected ? "selected" : ""} ${planned ? "planned" : ""}`}
+                  className={`fd-cat-card ${selected ? "fd-cat-card--selected" : ""}`}
                   onClick={() => setCategory(cat.code)}
                   aria-pressed={selected}
+                  disabled={planned}
                 >
-                  <span className="category-tile-inner">
-                    <span className="category-tile-label">{plannedLabel(cat)}</span>
+                  <span className="fd-cat-icon">
+                    <CategoryGlyph index={idx} />
                   </span>
+                  <span className="fd-cat-label">{plannedLabel(cat)}</span>
                 </button>
               );
-            })}
-          </div>
+            })
+          )}
         </section>
 
-        {loadErr ? (
-          <p className="card-inline-msg" role="alert">
-            {loadErr}
-          </p>
-        ) : null}
-
-        <section className="landing-mall-hot" id="hot-deals" aria-labelledby="lm-hot-title">
-          <div className="landing-mall-hot-head">
+        <section className="fd-best" aria-labelledby="fd-best-title">
+          <header className="fd-best-head">
             <div>
-              <h2 id="lm-hot-title">
-                <span>추천</span> 상품
-              </h2>
-              <p>
-                <span className="muted-label">{catMeta?.label ?? "카테고리"}</span> · 위에서 선택한 분류의 일부입니다.
-              </p>
+              <h2 id="fd-best-title">실시간 인기</h2>
+              <p>지금 많이 선택되는 할인 쿠폰입니다.</p>
             </div>
-            {hasAnyProducts ? (
-              <Link href="/coupons" className="landing-mall-more">
-                전체보기
-              </Link>
-            ) : null}
-          </div>
+            <Link href="/coupons" className="fd-best-more">
+              전체 보기 <span aria-hidden>→</span>
+            </Link>
+          </header>
+
+          {loadErr ? (
+            <p className="fd-inline-msg" role="alert">
+              {loadErr}
+            </p>
+          ) : null}
 
           {!hasAnyProducts ? (
             <div className="panel flat planned-category-panel">
@@ -201,105 +185,92 @@ export default function HomeCatalog({ homeNotices = [], homeNoticesError = null 
               <p className="muted">다른 카테고리를 선택하거나 잠시 후 다시 확인해 주세요.</p>
             </div>
           ) : (
-            <ul className="product-grid landing-mall-grid4">
-              {hotDeals.map((p) => (
-                <li key={p.productCode} className="product-card landing-mall-card">
-                  <Link href={`/coupons/${p.productCode}`} className="product-card-top">
-                    <div className="product-image">
-                      {p.mainImageUrl ? <img src={p.mainImageUrl} alt="" className="product-thumb-cover" /> : "CINE"}
+            <div className="fd-best-grid">
+              {hotDeals.map((p) => {
+                const pct = discountPercentOff(p.unitPrice, p.originPrice);
+                const { fillPct, remaining } = stockVisual(p.productCode);
+                const initials = (p.brandLabel ?? "C").slice(0, 2).toUpperCase();
+                return (
+                  <Link key={p.productCode} href={`/coupons/${p.productCode}`} className="fd-card">
+                    <div className="fd-card-media">
+                      {p.mainImageUrl ? <img src={p.mainImageUrl} alt="" /> : null}
+                      <span className="fd-card-badge">{pct != null ? `${pct}% 할인` : "특가"}</span>
+                    </div>
+                    <div className="fd-card-brand">
+                      <span className="fd-card-brand-ico">{initials}</span>
+                      <span className="fd-card-brand-name">{p.brandLabel}</span>
+                    </div>
+                    <h3>{p.name}</h3>
+                    <div className="fd-card-prices">
+                      <span className="fd-card-price-sale">{p.unitPrice.toLocaleString()}원</span>
+                      {pct != null ? (
+                        <span className="fd-card-price-origin">{p.originPrice.toLocaleString()}원</span>
+                      ) : null}
+                    </div>
+                    <div className="fd-stock-meta">
+                      <span>남은 수량 약 {remaining}개</span>
+                      <span>{fillPct}%</span>
+                    </div>
+                    <div className="fd-stock-bar" aria-hidden>
+                      <div className="fd-stock-fill" style={{ width: `${fillPct}%` }} />
                     </div>
                   </Link>
-                  <div className="product-meta">
-                    <Link href={`/coupons/${p.productCode}`} className="product-meta-link">
-                      <span className="product-brand">{p.brandLabel}</span>
-                      <p className="product-name">{p.name}</p>
-                    </Link>
-                    <ProductPriceDisplay unitPrice={p.unitPrice} originPrice={p.originPrice} layout="card" />
-                    <Link href={`/coupons/${p.productCode}`} className="card-button">
-                      구매하기
-                    </Link>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                );
+              })}
+            </div>
           )}
         </section>
+
+        <section className="fd-promo" aria-labelledby="fd-promo-title">
+          <div>
+            <h2 id="fd-promo-title">친구를 초대하면 5,000P</h2>
+            <p>
+              좋은 할인을 주변에도 알려 주세요. 친구가 첫 구매를 완료하면 추천 보상으로 포인트를 드립니다. (이벤트
+              조건은 공지 및 이용안내를 확인해 주세요.)
+            </p>
+            <Link href="/signup" className="fd-promo-btn">
+              초대 링크 받기
+            </Link>
+          </div>
+          <div className="fd-promo-deco" aria-hidden />
+        </section>
+
+        {(homeNotices.length > 0 || homeNoticesError) && (
+          <section className="fd-notice" aria-label="공지">
+            {homeNoticesError ? <p className="fd-inline-msg">{homeNoticesError}</p> : null}
+            {homeNotices.length > 0 ? (
+              <p style={{ margin: 0, fontSize: 14, color: "#586062" }}>
+                새 소식이 있습니다.{" "}
+                <Link href="/support/notice" style={{ color: "#2a3fa4", fontWeight: 700 }}>
+                  공지사항 보기
+                </Link>
+              </p>
+            ) : null}
+          </section>
+        )}
       </div>
 
-      <section className="landing-mall-steps" aria-labelledby="lm-steps-title">
-        <div className="landing-mall-steps-head">
-          <h2 id="lm-steps-title">이용 순서</h2>
-          <p>고르고 → 결제하고 → 극장에서 사용하기</p>
-        </div>
-        <ol className="landing-mall-steps-flow">
-          <li>
-            <div className="landing-mall-step-num">1</div>
-            <strong>쿠폰 선택</strong>
-            <p>브랜드와 금액에 맞는 상품을 고릅니다.</p>
-          </li>
-          <li>
-            <div className="landing-mall-step-num">2</div>
-            <strong>결제</strong>
-            <p>완료 즉시 쿠폰 번호가 표시됩니다.</p>
-          </li>
-          <li>
-            <div className="landing-mall-step-num">3</div>
-            <strong>사용</strong>
-            <p>극장이 안내하는 앱·현장 절차에 맞춰 입력합니다.</p>
-          </li>
-        </ol>
-      </section>
-
-      <section className="landing-mall-cta">
-        <h2>
-          회원가입 후
-          <br />
-          주문·쿠폰 번호를 한곳에서
-        </h2>
-        <p>로그인하면 마이페이지에서 지난 구매와 발급 번호를 다시 열어볼 수 있습니다.</p>
-        <Link href="/signup" className="button secondary">
-          회원가입
-        </Link>
-      </section>
-
-      <section className="section guide-section landing-mall-guides">
-        <article className="guide-card">
-          <h3>회원가입</h3>
-          <p>이메일로 가입하면 주문·쿠폰 번호를 한곳에서 다시 확인할 수 있습니다.</p>
-          <Link href="/signup" className="guide-link">
-            가입 화면으로
-          </Link>
-        </article>
-        <article className="guide-card">
-          <h3>브랜드별 사용법</h3>
-          <p>극장마다 앱·키오스크 절차가 조금씩 다릅니다. 모달에서 요약을 확인하세요.</p>
-          <button type="button" className="guide-link" onClick={() => setUsageModalOpen(true)}>
-            사용 안내 열기
-          </button>
-        </article>
-      </section>
-
-      {(homeNotices.length > 0 || homeNoticesError) && (
-        <section className="section">
-          <div className="section-head">
-            <h2>공지사항</h2>
+      <footer className="fd-foot">
+        <div className="fd-foot-inner">
+          <div className="fd-foot-brand">
+            <strong>cinepark COUPON</strong>
+            <p>제휴 영화관 할인 쿠폰을 한곳에서 비교·구매할 수 있도록 돕는 서비스입니다.</p>
           </div>
-          {homeNoticesError ? <p className="card-inline-msg">{homeNoticesError}</p> : null}
-          {homeNotices.length > 0 ? (
-            <Link href="/notice" className="button secondary">
-              공지 전체 보기
-            </Link>
-          ) : null}
-        </section>
-      )}
-
-      <nav className="landing-mall-service" aria-label="고객 지원">
-        <Link href="/service">서비스 안내</Link>
-        <Link href="/cases">활용 사례</Link>
-        <Link href="/faq">자주 묻는 질문</Link>
-        <Link href="/inquiry">1:1 문의</Link>
-        <Link href="/notice">공지사항</Link>
-      </nav>
+          <nav className="fd-foot-links" aria-label="푸터 링크">
+            <Link href="/intro">서비스 소개</Link>
+            <Link href="/support/guide">이용안내</Link>
+            <Link href="/">개인정보 처리방침</Link>
+            <a href="https://totalseller.co.kr/" target="_blank" rel="noreferrer">
+              입점·제휴 문의
+            </a>
+            <Link href="/support">고객센터</Link>
+            <button type="button" onClick={() => setUsageModalOpen(true)}>
+              브랜드 사용 안내
+            </button>
+          </nav>
+        </div>
+        <p className="fd-foot-copy">© {new Date().getFullYear()} CINEPARK COUPON. All rights reserved.</p>
+      </footer>
 
       <BrandUsageModal open={usageModalOpen} onClose={() => setUsageModalOpen(false)} />
     </div>

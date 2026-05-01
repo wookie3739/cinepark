@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import {
+  adminAppendCouponCodes,
   adminCreateProduct,
   adminDeleteProduct,
   adminFetchCategories,
@@ -75,6 +76,19 @@ function formatAdminInstant(s: string | null): string {
   }
 }
 
+/** 줄 단위 쿠폰 번호 — 빈 줄 제거, 앞뒤 공백 제거, 입력 내 중복 제거(순서 유지) */
+function parseCredentialLines(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t === "" || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
 const IMG_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
 export default function AdminProductsPage() {
@@ -110,6 +124,8 @@ export default function AdminProductsPage() {
   const [codesPage, setCodesPage] = useState<SpringPage<CouponCodeAdminRow> | null>(null);
   const [codesLoading, setCodesLoading] = useState(false);
   const [codesErr, setCodesErr] = useState<string | null>(null);
+  const [codesAppendDraft, setCodesAppendDraft] = useState("");
+  const [codesAppendSaving, setCodesAppendSaving] = useState(false);
 
   useEffect(() => {
     if (!mainFile) {
@@ -286,12 +302,37 @@ export default function AdminProductsPage() {
     setCodesModalRow(null);
     setCodesPage(null);
     setCodesErr(null);
+    setCodesAppendDraft("");
+    setCodesAppendSaving(false);
   }, []);
 
   const openCodesModal = (row: AdminCouponProductRow) => {
     setCodesModalRow(row);
     setCodesPage(null);
+    setCodesAppendDraft("");
+    setCodesErr(null);
     void fetchCodesPage(row, 0);
+  };
+
+  const submitAppendCredentials = async () => {
+    if (!accessToken || !codesModalRow) return;
+    const credentials = parseCredentialLines(codesAppendDraft);
+    if (credentials.length === 0) {
+      setCodesErr("쿠폰 번호를 한 줄 이상 입력해 주세요.");
+      return;
+    }
+    setCodesAppendSaving(true);
+    setCodesErr(null);
+    try {
+      const { added } = await adminAppendCouponCodes(accessToken, codesModalRow.id, { credentials });
+      setCodesAppendDraft("");
+      setCodesModalRow((prev) => (prev ? { ...prev, availableStock: prev.availableStock + added } : null));
+      await Promise.all([reload(), fetchCodesPage(codesModalRow, 0)]);
+    } catch (e) {
+      setCodesErr(e instanceof Error ? e.message : "재고 추가 실패");
+    } finally {
+      setCodesAppendSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -310,9 +351,8 @@ export default function AdminProductsPage() {
       <header className="admin-page-head">
         <h1>쿠폰 상품</h1>
         <p>
-          상품(SKU)을 등록합니다. 공개 상세 페이지는{" "}
-          <code>/coupons/&lt;상품 코드&gt;</code> 입니다. 쿠폰 번호 대량 입력은 왼쪽 메뉴「쿠폰 › 쿠폰 코드 대량 등록」을
-          사용합니다.
+          상품(SKU)을 등록합니다. 공개 상세 페이지는 <code>/coupons/&lt;상품 코드&gt;</code> 입니다. 쿠폰 번호는 목록「상세」
+          모달에서 줄 단위로 넣거나, 왼쪽 메뉴「쿠폰 › 쿠폰 코드 대량 등록」으로 여러 상품에 나눠 넣을 수 있습니다.
         </p>
       </header>
 
@@ -630,11 +670,36 @@ export default function AdminProductsPage() {
                 <p className="muted admin-modal-meta">
                   {codesModalRow.name} · 상품 ID {codesModalRow.id} · 상품 코드{" "}
                   <code className="admin-code">{codesModalRow.productCode}</code>
+                  <br />
+                  미판매 재고(등록 가능 수량): <strong>{codesModalRow.availableStock}</strong>
                 </p>
               </div>
               <button type="button" className="admin-modal-close" onClick={closeCodesModal} aria-label="닫기">
                 ×
               </button>
+            </div>
+
+            <div className="admin-form-row" style={{ marginBottom: "1rem" }}>
+              <label htmlFor="admin-append-credentials">재고 추가(쿠폰 번호)</label>
+              <textarea
+                id="admin-append-credentials"
+                className="admin-textarea"
+                rows={4}
+                value={codesAppendDraft}
+                onChange={(e) => setCodesAppendDraft(e.target.value)}
+                placeholder="한 줄에 쿠폰 번호 하나. 여러 줄 붙여넣기 가능."
+                disabled={codesAppendSaving}
+              />
+              <div className="button-row" style={{ marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="admin-btn-primary"
+                  disabled={codesAppendSaving || codesLoading}
+                  onClick={() => void submitAppendCredentials()}
+                >
+                  {codesAppendSaving ? "추가 중…" : "재고 추가"}
+                </button>
+              </div>
             </div>
 
             {codesErr ? (

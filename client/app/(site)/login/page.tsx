@@ -1,12 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 
+function safeRelativePath(raw: string | null): string | null {
+  if (!raw) return null;
+  const t = raw.trim();
+  if (!t.startsWith("/") || t.startsWith("//")) return null;
+  return t;
+}
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login } = useAuth();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +30,8 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(form.email.trim(), form.password);
-      router.push("/mypage");
+      const next = safeRelativePath(searchParams.get("callbackUrl")) ?? "/coupons";
+      router.push(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "로그인에 실패했습니다.");
     } finally {
