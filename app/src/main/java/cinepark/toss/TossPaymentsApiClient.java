@@ -19,6 +19,7 @@ import org.springframework.web.client.RestClient;
 public class TossPaymentsApiClient {
 
     private static final ObjectMapper OM = new ObjectMapper();
+    private static final int LOG_BODY_MAX = 24_000;
 
     private final RestClient tossPaymentsRestClient;
     private final TossPaymentsProperties tossPaymentsProperties;
@@ -26,13 +27,19 @@ public class TossPaymentsApiClient {
     public TossPaymentApproved confirmPayment(String paymentKey, String orderId, long amount) {
         ensureSecretConfigured();
         String auth = authorizationHeader();
+        log.info(
+                "toss payments confirm request paymentKey={} orderId={} amount={}",
+                paymentKey,
+                orderId,
+                amount);
         JsonNode payment = tryConfirm(auth, paymentKey, orderId, amount);
         if (payment.has("paymentKey") && payment.has("orderId")) {
+            logTossPaymentPayload("POST /v1/payments/confirm (승인 응답)", payment);
             return parsePaymentNode(payment);
         }
         String code = payment.path("code").asText("");
         if (looksLikeApprovedRetry(code)) {
-            log.info("toss confirm retriable-ish code={}, trying GET /v1/payments", code);
+            log.info("toss confirm retriable-ish code={}, trying GET /v1/payments/{}", code, paymentKey);
             return getPaymentApproved(auth, paymentKey);
         }
         throw BusinessException.of(
@@ -75,9 +82,16 @@ public class TossPaymentsApiClient {
                             .body(Map.of("paymentKey", paymentKey, "orderId", orderId, "amount", amount))
                             .retrieve()
                             .body(String.class);
+            if (log.isDebugEnabled()) {
+                log.debug("toss confirm HTTP 200 raw={}", truncateForLog(body));
+            }
             return parseJson(body);
         } catch (HttpClientErrorException ex) {
             String raw = ex.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.warn(
+                    "toss confirm HTTP {} status raw={}",
+                    ex.getStatusCode().value(),
+                    truncateForLog(raw));
             return parseJson(raw);
         }
     }
@@ -90,7 +104,11 @@ public class TossPaymentsApiClient {
                         .header(HttpHeaders.AUTHORIZATION, auth)
                         .retrieve()
                         .body(String.class);
+        if (log.isDebugEnabled()) {
+            log.debug("toss GET /v1/payments/{} raw={}", paymentKey, truncateForLog(body));
+        }
         JsonNode payment = parseJson(body);
+        logTossPaymentPayload("GET /v1/payments/{paymentKey} (재조회)", payment);
         return parsePaymentNode(payment);
     }
 
@@ -120,9 +138,117 @@ public class TossPaymentsApiClient {
             throw BusinessException.badRequest("토스 결제 금액 정보가 없습니다.");
         }
         long amt = payment.get("totalAmount").asLong();
-        String receiptUrl =
-                payment.path("receipt").isMissingNode() ? null : payment.path("receipt").path("url").asText(null);
-        return new TossPaymentApproved(pk, oid, amt, receiptUrl);
+        String receiptUrl = pickReceiptUrl(payment);
+        TossPaymentApproved approved = new TossPaymentApproved(pk, oid, amt, receiptUrl);
+        log.info(
+                "toss payments parsed approved paymentKey={} orderId={} totalAmount={} receiptUrl={}",
+                approved.paymentKey(),
+                approved.orderId(),
+                approved.totalAmount(),
+                approved.receiptUrl() != null ? approved.receiptUrl() : "(null)");
+        return approved;
+    }
+
+    private static String pickReceiptUrl(JsonNode payment) {
+        String u = nodeTextOrNull(payment.path("receipt").path("url"));
+        if (u != null) {
+            return u;
+        }
+        u = nodeTextOrNull(payment.at("/cashReceipt/receiptUrl"));
+        if (u != null) {
+            return u;
+        }
+        return nodeTextOrNull(payment.at("/mobilePhone/receiptUrl"));
+    }
+
+    private static String nodeTextOrNull(JsonNode n) {
+        if (n == null || n.isMissingNode() || n.isNull()) {
+            return null;
+        }
+        String t = n.asText("").trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    /**
+     * PG Payment 객체 주요 필드 요약(INFO) + 전체 JSON(DEBUG). 시크릿·Authorization 은 로그에 넣지 않습니다.
+     */
+    private void logTossPaymentPayload(String label, JsonNode p) {
+        if (p == null || p.isMissingNode()) {
+            log.info("toss payments {}: (empty node)", label);
+            return;
+        }
+        if (p.has("code") && !p.has("paymentKey")) {
+            log.info(
+                    "toss payments {}: error code={} message={}",
+                    label,
+                    p.path("code").asText(""),
+                    p.path("message").asText(""));
+            if (log.isDebugEnabled()) {
+                log.debug("toss payments {} error raw={}", label, nodeToJsonForLog(p));
+            }
+            return;
+        }
+        log.info(
+                "toss payments {}: paymentKey={} orderId={} orderName={} status={} method={} type={} "
+                        + "totalAmount={} balanceAmount={} version={} mId={} approvedAt={} requestedAt={} "
+                        + "lastTransactionKey={} transactionKey={} "
+                        + "receipt.url={} receipt.nodePresent={} cashReceipt.receiptUrl={} mobilePhone.receiptUrl={} "
+                        + "easyPay.provider={} card.issuerCode={} card.amount={} virtualAccountAbsent={} transferAbsent={} "
+                        + "failurePresent={}",
+                label,
+                p.path("paymentKey").asText(""),
+                p.path("orderId").asText(""),
+                p.path("orderName").asText(""),
+                p.path("status").asText(""),
+                p.path("method").asText(""),
+                p.path("type").asText(""),
+                p.path("totalAmount").asText(""),
+                p.path("balanceAmount").asText(""),
+                p.path("version").asText(""),
+                p.path("mId").asText(""),
+                p.path("approvedAt").asText(""),
+                p.path("requestedAt").asText(""),
+                p.path("lastTransactionKey").asText(""),
+                p.path("transactionKey").asText(""),
+                textOrDash(p.at("/receipt/url")),
+                p.has("receipt") && !p.get("receipt").isNull(),
+                textOrDash(p.at("/cashReceipt/receiptUrl")),
+                textOrDash(p.at("/mobilePhone/receiptUrl")),
+                p.path("easyPay").path("provider").asText(""),
+                p.path("card").path("issuerCode").asText(""),
+                p.path("card").path("amount").asText(""),
+                p.at("/virtualAccount").isMissingNode() || p.at("/virtualAccount").isNull(),
+                p.at("/transfer").isMissingNode() || p.at("/transfer").isNull(),
+                p.has("failure") && !p.get("failure").isNull());
+        if (log.isDebugEnabled()) {
+            log.debug("toss payments {} full json={}", label, nodeToJsonForLog(p));
+        }
+    }
+
+    private static String textOrDash(JsonNode n) {
+        if (n == null || n.isMissingNode() || n.isNull()) {
+            return "—";
+        }
+        String t = n.asText("").trim();
+        return t.isEmpty() ? "—" : t;
+    }
+
+    private static String nodeToJsonForLog(JsonNode node) {
+        try {
+            return truncateForLog(OM.writeValueAsString(node));
+        } catch (Exception e) {
+            return "(json serialize failed: " + e.getMessage() + ")";
+        }
+    }
+
+    private static String truncateForLog(String s) {
+        if (s == null) {
+            return "";
+        }
+        if (s.length() <= LOG_BODY_MAX) {
+            return s;
+        }
+        return s.substring(0, LOG_BODY_MAX) + "...(truncated,len=" + s.length() + ")";
     }
 
     private String authorizationHeader() {

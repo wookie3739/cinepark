@@ -3,8 +3,13 @@ spring:
     import: optional:classpath:application-private.yml
   application:
     name: cinepark
+  # API JSON의 날짜·시각 표기 기본 타임존(Instant 등)
+  jackson:
+    time-zone: Asia/Seoul
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5400/cinepark}
+    # 세션 TimeZone=Asia/Seoul: timestamptz 조회·표시 시 도구/드라이버가 한국 기준으로 맞추기 쉽다.
+    # DB_URL 환경변수로 덮어쓸 때는 동일 옵션을 붙이는 것을 권장 (?options=-c%20TimeZone=Asia/Seoul)
+    url: ${DB_URL:jdbc:postgresql://localhost:5400/cinepark?options=-c%20TimeZone=Asia/Seoul}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
   jpa:
@@ -13,6 +18,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: Asia/Seoul
     open-in-view: false
   mail:
     host: ${SMTP_HOST:}
@@ -43,7 +50,9 @@ cinepark:
     access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:3600000}
     refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:1209600000}
   tosspayments:
-    secret-key: ${TOSSPAYMENTS_SECRET_KEY:}
+    # 결제위젯 연동 시: 클라이언트의 test_gck_* 와 한 세트인 test_gsk_* (API 개별 연동 test_sk_* 와 혼용 불가)
+    # 미설정 시 토스 문서 결제위젯 샘플 키(클라이언트 lib/tosspayments-client.ts 의 TOSS_PAYMENTS_CLIENT_KEY 와 짝)
+    secret-key: ${TOSSPAYMENTS_SECRET_KEY}
     prepare-ttl-minutes: 30
 
 management:

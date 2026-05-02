@@ -7,6 +7,8 @@ import cinepark.catalog.storage.CatalogImageDelivery;
 import cinepark.common.BusinessException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -77,6 +79,47 @@ public class CartService {
     @Transactional
     public void clearCart(Long userId) {
         cartLineRepository.deleteAllByUserId(userId);
+    }
+
+    /**
+     * 결제 확정 후 장바구니에서 주문에 포함된 상품 수량만큼만 차감합니다. 바로구매 등으로 장바구니에 없던 품목은 건너뜁니다.
+     */
+    @Transactional
+    public void decrementQuantitiesForOrder(Long userId, Map<String, Integer> productCodeToPurchasedQty) {
+        if (productCodeToPurchasedQty == null || productCodeToPurchasedQty.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, Integer> e : productCodeToPurchasedQty.entrySet()) {
+            if (e.getKey() == null) {
+                continue;
+            }
+            String code = e.getKey().trim();
+            if (code.isEmpty()) {
+                continue;
+            }
+            int purchased = e.getValue() == null ? 0 : e.getValue();
+            if (purchased < 1) {
+                continue;
+            }
+            Optional<CouponProduct> productOpt = productRepository.findByProductCode(code);
+            if (productOpt.isEmpty()) {
+                continue;
+            }
+            CouponProduct product = productOpt.get();
+            Optional<CartLine> lineOpt =
+                    cartLineRepository.findByUserIdAndCouponProduct_Id(userId, product.getId());
+            if (lineOpt.isEmpty()) {
+                continue;
+            }
+            CartLine line = lineOpt.get();
+            int next = line.getQuantity() - purchased;
+            if (next <= 0) {
+                cartLineRepository.deleteByUserIdAndCouponProduct_Id(userId, product.getId());
+            } else {
+                line.setQuantity(next);
+                cartLineRepository.save(line);
+            }
+        }
     }
 
     private CartViewResponse buildView(List<CartLine> lines) {

@@ -14,7 +14,9 @@ import cinepark.toss.TossPaymentsApiClient;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.Objects;
@@ -25,6 +27,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Slf4j
 @Service
@@ -121,10 +124,14 @@ public class CheckoutSettlementService {
         checkout.setReceiptUrl(toss.receiptUrl());
         paymentCheckoutRepository.save(checkout);
 
-        cartService.clearCart(userId);
+        Map<String, Integer> purchasedByCode = new LinkedHashMap<>();
+        for (PaymentCheckoutLine line : checkout.getLines()) {
+            purchasedByCode.merge(line.getProductCode(), line.getQuantity(), Integer::sum);
+        }
+        cartService.decrementQuantitiesForOrder(userId, purchasedByCode);
         log.info("checkout finalized merchantOrderId={} shopOrderId={}", checkout.getMerchantOrderId(), shopOrder.getId());
 
-        return buildConfirmResponseFromShopOrder(shopOrder);
+        return buildConfirmResponseFromShopOrder(shopOrder, toss.receiptUrl());
     }
 
     private void allocateCouponCodes(PaymentCheckout checkout, long shopOrderId, Long userId, Instant now) {
@@ -158,6 +165,10 @@ public class CheckoutSettlementService {
     }
 
     private CheckoutConfirmResponse buildConfirmResponseFromShopOrder(ShopOrder shop) {
+        return buildConfirmResponseFromShopOrder(shop, null);
+    }
+
+    private CheckoutConfirmResponse buildConfirmResponseFromShopOrder(ShopOrder shop, String receiptUrlFromPg) {
         List<CouponCode> codes =
                 couponCodeRepository.findByOrderIdOrderByOrderLineIdAscIdAsc(shop.getId());
         NavigableMap<Long, List<CouponCode>> byLine =
@@ -178,11 +189,23 @@ public class CheckoutSettlementService {
                             productCode, productName, qty, credentialsForBuyer(slice)));
         }
 
+        String receiptUrl = pickReceiptUrlForApi(receiptUrlFromPg, shop.getReceiptUrl());
+
         return new CheckoutConfirmResponse(
                 shop.getId(),
                 shop.getMerchantOrderId() != null ? shop.getMerchantOrderId() : "",
-                shop.getReceiptUrl(),
+                receiptUrl,
                 lines);
+    }
+
+    private static String pickReceiptUrlForApi(String fromPg, String fromEntity) {
+        if (StringUtils.hasText(fromPg)) {
+            return fromPg.trim();
+        }
+        if (StringUtils.hasText(fromEntity)) {
+            return fromEntity.trim();
+        }
+        return null;
     }
 
     /** 결제 확정 직후 본인 주문 응답: 구매자에게 실제 쿠폰 번호를 내려준다(이 엔드포인트는 로그인·본인 검증 하에만 호출된다). */

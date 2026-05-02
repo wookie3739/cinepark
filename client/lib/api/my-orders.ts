@@ -2,6 +2,7 @@ import { getApiBaseUrl } from "../api-base";
 import type { ApiResponse } from "../../types/auth";
 import type { SpringPage } from "../../types/customer-service";
 import type { CheckoutConfirmResult } from "./checkout";
+import { parseCheckoutConfirmResponse } from "./checkout";
 
 async function parseJsonSafe(res: Response): Promise<unknown | null> {
   try {
@@ -50,5 +51,5 @@ export async function fetchMyOrderDetail(
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  return readEnvelope<CheckoutConfirmResult>(res);
+  return parseCheckoutConfirmResponse(await readEnvelope<unknown>(res));
 }
